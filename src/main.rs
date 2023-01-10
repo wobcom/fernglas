@@ -140,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
                 };
 
                 if let BmpMessage::RouteMonitoring(rm) = msg {
-                    let table = match (rm.peer.peertype, (rm.peer.flags & 128) != 0) {
+                    let table = match (rm.peer.peertype, (rm.peer.flags & 64) != 0) {
                         (0, false) => TableSelector::PrePolicyAdjIn(SessionId {
                             local_router_id: "0.0.0.0".parse().unwrap(), // FIXME
                             remote_router_id: rm.peer.routerid,
