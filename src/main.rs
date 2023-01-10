@@ -150,7 +150,10 @@ async fn main() -> anyhow::Result<()> {
                             remote_router_id: rm.peer.routerid,
                         }),
                         (3, _) => TableSelector::LocRib(rm.peer.routerid),
-                        _ => continue,
+                        _ => {
+                            println!("unknown peer type {} flags {:x}", rm.peer.peertype, rm.peer.flags);
+                            continue;
+                        }
                     };
 
                     let mut route: Route = Default::default();
