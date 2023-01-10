@@ -7,6 +7,9 @@ use std::sync::Arc;
 use ipnet::IpNet;
 use std::collections::HashMap;
 use async_trait::async_trait;
+use tokio_stream::wrappers::ReceiverStream;
+use rayon::iter::ParallelIterator;
+use rayon::iter::IntoParallelIterator;
 
 use crate::table::{Route, Query, SessionId, TableSelector, Table, NetQuery};
 
@@ -71,7 +74,7 @@ impl Table for InMemoryTable {
                 .collect::<Vec<_>>()
         };
 
-        let nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Route)) -> bool + Send> = match query.net {
+        let nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Route)) -> bool + Send + Sync> = match query.net {
             Some(NetQuery::AsPathRegex(ref as_path_regex)) => {
                 let regex = Regex::new(as_path_regex).unwrap(); // FIXME error handling
                 Box::new(move |(_, _, route)| {
