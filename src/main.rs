@@ -1,4 +1,5 @@
 mod table;
+mod table_impl;
 
 use futures_util::StreamExt;
 use std::convert::Infallible;
@@ -19,7 +20,8 @@ use zettabgp::prelude::BgpCommunityList;
 use zettabgp::prelude::BgpAddr;
 use zettabgp::bmp::BmpMessage;
 use zettabgp::prelude::BgpAttrItem;
-use table::{Table, TableSelector, InMemoryTable, Route, RouteOrigin, SessionId, Query, NetQuery};
+use table::{Table, TableSelector, Route, RouteOrigin, SessionId, Query, NetQuery};
+use table_impl::InMemoryTable;
 
 fn bgp_addrs_to_nets(addrs: &BgpAddrs) -> Vec<IpNet> {
     let mut res = vec![];
