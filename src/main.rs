@@ -61,12 +61,8 @@ async fn main() -> anyhow::Result<()> {
                     let table = table.clone();
                     async move {
                         Ok::<_, Infallible>(service_fn(move |req| {
-                            let net_str = req.uri().path().chars().skip(1).collect::<String>();
-                            //let net: IpAddr = net_str.parse().unwrap();
-                            let query = Query {
-                                net: Some(NetQuery::AsPathRegex(net_str)),
-                                ..Default::default()
-                            };
+                            let query = serde_urlencoded::from_str(req.uri().query().unwrap()).unwrap();
+                            println!("{}", serde_json::to_string_pretty(&query).unwrap());
                             let table = table.clone();
                             async move {
                                 let resp = {

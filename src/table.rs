@@ -29,13 +29,14 @@ pub struct SessionId {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+#[serde(tag = "table")]
 pub enum TableSelector {
     PrePolicyAdjIn(SessionId),
     PostPolicyAdjIn(SessionId),
     LocRib(Ipv4Addr),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NetQuery {
     AsPathRegex(String),
     Contains(IpAddr),
@@ -44,10 +45,12 @@ pub enum NetQuery {
     OrLonger(IpNet),
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Query {
     pub router_id: Option<IpAddr>,
+    #[serde(flatten)]
     pub table: Option<TableSelector>,
+    #[serde(flatten)]
     pub net: Option<NetQuery>,
 }
 
