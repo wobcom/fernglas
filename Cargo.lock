@@ -159,6 +159,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
 
 [[package]]
+name = "fernglas"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures-util",
+ "hyper",
+ "ipnet",
+ "rayon",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
+ "tokio-postgres",
+ "tokio-stream",
+ "tokio-util",
+ "zettabgp",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -344,27 +365,6 @@ name = "itoa"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fad582f4b9e86b6caa621cabeb0963332d92eea04729ab12892c2533951e6440"
-
-[[package]]
-name = "lg-backend"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "futures-util",
- "hyper",
- "ipnet",
- "rayon",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "tokio",
- "tokio-postgres",
- "tokio-stream",
- "tokio-util",
- "zettabgp",
-]
 
 [[package]]
 name = "libc"
