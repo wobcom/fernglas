@@ -89,7 +89,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                 });
 
-                println!("Restarting server after error");
+                eprintln!("Restarting server after error");
             }
 
         });
@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         let (io, so) = listener.accept().await?;
-        println!("connected {:?}", so);
+        eprintln!("connected {:?}", so);
 
         let table = table.clone();
         tokio::spawn(async move {
@@ -135,7 +135,7 @@ async fn main() -> anyhow::Result<()> {
                         }),
                         (3, _) => TableSelector::LocRib(rm.peer.routerid),
                         _ => {
-                            println!("unknown peer type {} flags {:x}", rm.peer.peertype, rm.peer.flags);
+                            eprintln!("unknown peer type {} flags {:x}", rm.peer.peertype, rm.peer.flags);
                             continue;
                         }
                     };
