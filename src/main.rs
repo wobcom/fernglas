@@ -19,7 +19,7 @@ use zettabgp::prelude::BgpCommunityList;
 use zettabgp::prelude::BgpAddr;
 use zettabgp::bmp::BmpMessage;
 use zettabgp::prelude::BgpAttrItem;
-use table::{Table, TableSelector, InMemoryTable, Route, RouteOrigin, SessionId};
+use table::{Table, TableSelector, InMemoryTable, Route, RouteOrigin, SessionId, Query, NetQuery};
 
 fn bgp_addrs_to_nets(addrs: &BgpAddrs) -> Vec<IpNet> {
     let mut res = vec![];
@@ -60,17 +60,17 @@ async fn main() -> anyhow::Result<()> {
                     async move {
                         Ok::<_, Infallible>(service_fn(move |req| {
                             let net_str = req.uri().path().chars().skip(1).collect::<String>();
-                            let net = net_str.parse().unwrap();
+                            //let net: IpAddr = net_str.parse().unwrap();
+                            let query = Query {
+                                net: Some(NetQuery::AsPathRegex(net_str)),
+                                ..Default::default()
+                            };
                             let table = table.clone();
                             async move {
                                 let resp = {
-                                    let mut stream = table.get_routes(net);
-                                    let mut res = vec![];
-                                    while let Some(next) = stream.next().await {
-                                        res.push(next);
-                                    }
-                                    let data = serde_json::to_string(&res).unwrap();
-                                    Response::new(Body::from(data))
+                                    let mut stream = table.get_routes(query)
+                                        .map(|route| Ok::<_, Infallible>(serde_json::to_string(&route).unwrap()));
+                                    Response::new(Body::wrap_stream(stream))
                                 };
                                 Ok::<_, Infallible>(resp)
                             }
