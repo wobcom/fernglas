@@ -46,19 +46,8 @@ fn bgp_addrs_to_nets(addrs: &BgpAddrs) -> Vec<IpNet> {
 async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind("[::]:11019").await?;
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10_000_000);
-
     let table: InMemoryTable = Default::default();
 
-    {
-        let table = table.clone();
-        tokio::spawn(async move {
-            loop {
-                let (net, session, route) = rx.recv().await.unwrap();
-                table.update_route(net, session, route).await;
-            }
-        });
-    }
     {
         let table = table.clone();
 
@@ -115,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
         let (io, so) = listener.accept().await?;
         println!("connected {:?}", so);
 
-        let tx = tx.clone();
+        let table = table.clone();
         tokio::spawn(async move {
             let mut read = LengthDelimitedCodec::builder()
                 .length_field_offset(1)
@@ -140,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
                 };
 
                 if let BmpMessage::RouteMonitoring(rm) = msg {
-                    let table = match (rm.peer.peertype, (rm.peer.flags & 64) != 0) {
+                    let session = match (rm.peer.peertype, (rm.peer.flags & 64) != 0) {
                         (0, false) => TableSelector::PrePolicyAdjIn(SessionId {
                             local_router_id: "0.0.0.0".parse().unwrap(), // FIXME
                             remote_router_id: rm.peer.routerid,
@@ -215,9 +204,7 @@ async fn main() -> anyhow::Result<()> {
                     for (net, nexthop) in update_nets {
                         let mut route = route.clone();
                         route.nexthop = nexthop;
-                        if tx.try_send((net, table.clone(), route)).is_err() {
-                            eprintln!("too slow! consider increasing buffer size");
-                        }
+                        table.update_route(net, session.clone(), route).await;
                     }
                     continue;
                 }
