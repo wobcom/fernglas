@@ -148,6 +148,7 @@ async fn main() -> anyhow::Result<()> {
                     let mut route: Route = Default::default();
                     let mut nexthop = None;
                     let mut update_nets = vec![];
+                    let mut withdraw_nets = vec![];
                     for attr in rm.update.attrs {
 					    match attr {
                             BgpAttrItem::MPUpdates(updates) => {
@@ -158,6 +159,11 @@ async fn main() -> anyhow::Result<()> {
                                 };
                                 for net in bgp_addrs_to_nets(&updates.addrs) {
                                     update_nets.push((net, nexthop));
+                                }
+                            }
+                            BgpAttrItem::MPWithdraws(withdraws) => {
+                                for net in bgp_addrs_to_nets(&withdraws.addrs) {
+                                    withdraw_nets.push(net);
                                 }
                             }
                             BgpAttrItem::NextHop(BgpNextHop { value }) => {
@@ -200,11 +206,17 @@ async fn main() -> anyhow::Result<()> {
                     for net in bgp_addrs_to_nets(&rm.update.updates).into_iter() {
                         update_nets.push((net, nexthop));
                     }
+                    for net in bgp_addrs_to_nets(&rm.update.withdraws).into_iter() {
+                        withdraw_nets.push(net);
+                    }
 
                     for (net, nexthop) in update_nets {
                         let mut route = route.clone();
                         route.nexthop = nexthop;
                         table.update_route(net, session.clone(), route).await;
+                    }
+                    for net in withdraw_nets {
+                        table.withdraw_route(net, session.clone()).await;
                     }
                     continue;
                 }
