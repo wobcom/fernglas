@@ -28,7 +28,7 @@ fn bgp_addrs_to_nets(addrs: &BgpAddrs) -> Vec<IpNet> {
             for addr in addrs {
                 match Ipv4Net::new(addr.addr, addr.prefixlen) {
                     Ok(net) => res.push(IpNet::V4(net)),
-                    Err(e) => eprintln!("invalid BgpAddrs prefixlen"),
+                    Err(_) => eprintln!("invalid BgpAddrs prefixlen"),
                 }
             }
         }
@@ -68,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
                             let table = table.clone();
                             async move {
                                 let resp = {
-                                    let mut stream = table.get_routes(query)
+                                    let stream = table.get_routes(query)
                                         .map(|route| Ok::<_, Infallible>(serde_json::to_string(&route).unwrap()));
                                     Response::new(Body::wrap_stream(stream))
                                 };
@@ -82,17 +82,14 @@ async fn main() -> anyhow::Result<()> {
                     .enable_all()
                     .build()
                     .unwrap();
-                let local = tokio::task::LocalSet::new();
-                local.spawn_local(async move {
+                rt.block_on(async move {
                     let server = Server::bind(&"[::]:3000".parse().unwrap())
-                        .executor(LocalExec)
                         .serve(make_service);
 
                     if let Err(e) = server.await {
                         eprintln!("server error: {}", e);
                     }
                 });
-                rt.block_on(local);
 
                 println!("Restarting server after error");
             }
@@ -228,16 +225,3 @@ async fn main() -> anyhow::Result<()> {
     }
 }
 
-
-#[derive(Clone, Copy, Debug)]
-struct LocalExec;
-
-impl<F> hyper::rt::Executor<F> for LocalExec
-where
-    F: std::future::Future + 'static, // not requiring `Send`
-{
-    fn execute(&self, fut: F) {
-        // This will spawn into the currently running `LocalSet`.
-        tokio::task::spawn_local(fut);
-    }
-}
