@@ -1,28 +1,45 @@
+mod table;
+
 use futures_util::StreamExt;
 use std::convert::Infallible;
 use hyper::{Body, Response, Server};
 use hyper::service::{make_service_fn, service_fn};
-use std::sync::Mutex;
 use std::net::IpAddr;
-use std::sync::Arc;
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
-use std::collections::HashMap;
 use tokio_util::codec::length_delimited::LengthDelimitedCodec;
 use tokio::net::TcpListener;
+use zettabgp::prelude::BgpAddrs;
+use zettabgp::prelude::BgpAttrOrigin;
+use zettabgp::prelude::BgpOrigin;
+use zettabgp::prelude::BgpMED;
+use zettabgp::prelude::BgpASpath;
+use zettabgp::prelude::BgpNextHop;
+use zettabgp::prelude::BgpLargeCommunityList;
+use zettabgp::prelude::BgpCommunityList;
+use zettabgp::prelude::BgpAddr;
 use zettabgp::bmp::BmpMessage;
 use zettabgp::prelude::BgpAttrItem;
+use table::{Table, TableSelector, InMemoryTable, Route, RouteOrigin, SessionId};
 
-#[derive(Debug, PartialEq)]
-enum RouteStatus {
-    Seen,
-    Accepted,
-    Selected,
-}
-
-#[derive(Debug)]
-struct Route {
-    attrs: Vec<BgpAttrItem>,
-    status: RouteStatus,
+fn bgp_addrs_to_nets(addrs: &BgpAddrs) -> Vec<IpNet> {
+    let mut res = vec![];
+    match addrs {
+        BgpAddrs::IPV4U(ref addrs) => {
+            for addr in addrs {
+                match Ipv4Net::new(addr.addr, addr.prefixlen) {
+                    Ok(net) => res.push(IpNet::V4(net)),
+                    Err(e) => eprintln!("invalid BgpAddrs prefixlen"),
+                }
+            }
+        }
+        BgpAddrs::IPV6U(ref addrs) => {
+            for addr in addrs {
+                res.push(IpNet::V6(Ipv6Net::new(addr.addr, addr.prefixlen).unwrap()));
+            }
+        }
+        _ => {}
+    }
+    res
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -31,66 +48,72 @@ async fn main() -> anyhow::Result<()> {
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(10_000_000);
 
-    let map: Arc<Mutex<HashMap<IpNet, HashMap<IpAddr, Vec<Arc<Route>>>>>> = Default::default();
+    let table: InMemoryTable = Default::default();
+
     {
-        let map = map.clone();
+        let table = table.clone();
         tokio::spawn(async move {
             loop {
-                // simple version, but re-locks the map for each route
-                /*
-                let (net, peeraddr, route) = rx.recv().await.unwrap();
-                let mut locked = map.lock().unwrap();
-                let map2 = locked.entry(net).or_insert(HashMap::new());
-                let e = map2.entry(peeraddr).or_insert(Vec::new());
-                e.push(route);
-                */
-
-                let mut next_route = rx.recv().await;
-
-                while let Some((net, peeraddr, route)) = next_route.take() {
-                    let mut locked = map.lock().unwrap();
-                    let map2 = locked.entry(net).or_insert(HashMap::new());
-                    let e = map2.entry(peeraddr).or_insert(Vec::new());
-                    e.push(route);
-
-                    next_route = rx.try_recv().ok()
-                }
-                
+                let (net, session, route) = rx.recv().await.unwrap();
+                table.update_route(net, session, route).await;
             }
         });
     }
     {
-        let map = map.clone();
+        let table = table.clone();
 
-        tokio::spawn(async move {
-            let make_service = make_service_fn(|_conn| {
-                let map = map.clone();
-                async move {
-                    Ok::<_, Infallible>(service_fn(move |req| {
-                        let net_str = req.uri().path().chars().skip(1).collect::<String>();
-                        let net = net_str.parse().unwrap();
-                        let resp = {
-                            let data = format!("{:#?}", &map.lock().unwrap().get(&net));
-                            Response::new(Body::from(data))
-                        };
-                        async move {
-                            Ok::<_, Infallible>(resp)
-                        }
-                    }))
-                }
-            });
+        std::thread::spawn(move || {
 
-            let server = Server::bind(&"[::]:3000".parse().unwrap()).serve(make_service);
+            loop {
+                let table = table.clone();
+                let make_service = make_service_fn(move |_conn| {
+                    let table = table.clone();
+                    async move {
+                        Ok::<_, Infallible>(service_fn(move |req| {
+                            let net_str = req.uri().path().chars().skip(1).collect::<String>();
+                            let net = net_str.parse().unwrap();
+                            let table = table.clone();
+                            async move {
+                                let resp = {
+                                    let mut stream = table.get_routes(net);
+                                    let mut res = vec![];
+                                    while let Some(next) = stream.next().await {
+                                        res.push(next);
+                                    }
+                                    let data = serde_json::to_string(&res).unwrap();
+                                    Response::new(Body::from(data))
+                                };
+                                Ok::<_, Infallible>(resp)
+                            }
+                        }))
+                    }
+                });
 
-            if let Err(e) = server.await {
-                eprintln!("server error: {}", e);
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                let local = tokio::task::LocalSet::new();
+                local.spawn_local(async move {
+                    let server = Server::bind(&"[::]:3000".parse().unwrap())
+                        .executor(LocalExec)
+                        .serve(make_service);
+
+                    if let Err(e) = server.await {
+                        eprintln!("server error: {}", e);
+                    }
+                });
+                rt.block_on(local);
+
+                println!("Restarting server after error");
             }
 
         });
     }
 
     loop {
-        let (io, _) = listener.accept().await?;
+        let (io, so) = listener.accept().await?;
+        println!("connected {:?}", so);
 
         let tx = tx.clone();
         tokio::spawn(async move {
@@ -117,84 +140,81 @@ async fn main() -> anyhow::Result<()> {
                 };
 
                 if let BmpMessage::RouteMonitoring(rm) = msg {
-                    let status = match (rm.peer.peertype, (rm.peer.flags & 128) != 0) {
-                        (0, false) => RouteStatus::Seen,
-                        (0, true) => RouteStatus::Accepted,
-                        (3, _) => RouteStatus::Selected,
+                    let table = match (rm.peer.peertype, (rm.peer.flags & 128) != 0) {
+                        (0, false) => TableSelector::PrePolicyAdjIn(SessionId {
+                            local_router_id: "0.0.0.0".parse().unwrap(), // FIXME
+                            remote_router_id: rm.peer.routerid,
+                        }),
+                        (0, true) => TableSelector::PostPolicyAdjIn(SessionId {
+                            local_router_id: "0.0.0.0".parse().unwrap(), // FIXME
+                            remote_router_id: rm.peer.routerid,
+                        }),
+                        (3, _) => TableSelector::LocRib(rm.peer.routerid),
                         _ => continue,
                     };
-                    if status == RouteStatus::Selected {
-                        println!("{:?}, {:#?}", status, rm);
-                    }
-                    let route = Arc::new(Route {
-                        attrs: rm.update.attrs,
-                        status,
-                    });
 
-/*                                                                                       
-Accepted, BmpMessageRouteMonitoring {                                                          
-    peer: BmpMessagePeerHeader {                                                               
-        peertype: 0,                                                                           
-        flags: 128,                                                                            
-        peerdistinguisher: BgpRD {                                                             
-            rdh: 0,                                                                            
-            rdl: 0,                                                                            
-        },                                                                                     
-        peeraddress: 2a0f:4ac4:80:f000::20:7671,                                               
-        asnum: 207671,                                                                         
-        routerid: 1.2.3.5,                                                                     
-        timestamp: 7186787386490350546,                                                        
-    },                                                                                         
-    update: BgpUpdateMessage {                                                                 
-        updates: IPV6U(                                                                        
-            [],                                                                                
-        ),                                                                                     
-        withdraws: IPV6U(                                                                      
-            [],                                                                                
-        ),                                                                                     
-        attrs: [                                                                               
-            MPUpdates(                                                                         
-                BgpMPUpdates {                                                                 
-                    nexthop: V6(                                                               
-                        2a0f:4ac4:80:f000::20:7671,                                            
-                    ),                                                                         
-                    addrs: IPV6U(                                                              
-                        [                                                                      
-                            BgpAddrV6 {                                                        
-                                addr: 2a0e:b105:530::,                                         
-                                prefixlen: 48,                                                 
-                            },                                                                 
-                        ],                                                                     
-                    ),                                                                         
-                },                                                                             
-            ),                   */
-/*
-                    let mut remaining_attrs = vec![];
-                    for attr in rm.attrs {
-					    if BgpAttrItem::MPUpdates(updates) = attr {
-
-                        } else {
-                            remaining_attrs.push(attr);
+                    let mut route: Route = Default::default();
+                    let mut nexthop = None;
+                    let mut update_nets = vec![];
+                    for attr in rm.update.attrs {
+					    match attr {
+                            BgpAttrItem::MPUpdates(updates) => {
+                                let nexthop = match updates.nexthop {
+                                    BgpAddr::V4(v4) => Some(IpAddr::from(v4)),
+                                    BgpAddr::V6(v6) => Some(IpAddr::from(v6)),
+                                    _ => None,
+                                };
+                                for net in bgp_addrs_to_nets(&updates.addrs) {
+                                    update_nets.push((net, nexthop));
+                                }
+                            }
+                            BgpAttrItem::NextHop(BgpNextHop { value }) => {
+                                nexthop = Some(value);
+                            }
+                            BgpAttrItem::CommunityList(BgpCommunityList { value }) => {
+                                let mut communities = vec![];
+                                for community in value.into_iter() {
+                                    communities.push(((community.value >> 16) as u16, (community.value & 0xff) as u16));
+                                }
+                                route.communities = Some(communities);
+                            }
+                            BgpAttrItem::MED(BgpMED { value }) => {
+                                route.med = Some(value);
+                            }
+                            BgpAttrItem::Origin(BgpOrigin { value }) => {
+                                route.origin = Some(match value {
+                                    BgpAttrOrigin::Igp => RouteOrigin::Igp,
+                                    BgpAttrOrigin::Egp => RouteOrigin::Egp,
+                                    BgpAttrOrigin::Incomplete => RouteOrigin::Incomplete,
+                                })
+                            }
+                            BgpAttrItem::ASPath(BgpASpath { value }) => {
+                                let mut as_path = vec![];
+                                for asn in value {
+                                    as_path.push(asn.value);
+                                }
+                                route.as_path = Some(as_path);
+                            }
+                            BgpAttrItem::LargeCommunityList(BgpLargeCommunityList { value }) => {
+                                let mut communities = vec![];
+                                for community in value.into_iter() {
+                                    communities.push((community.ga, community.ldp1, community.ldp2));
+                                }
+                                route.large_communities = Some(communities);
+                            }
+                            _ => {},
                         }
-					}*/
-                    match rm.update.updates {
-                        zettabgp::afi::BgpAddrs::IPV4U(ref addrs) => {
-                            for addr in addrs {
-                                let net = IpNet::V4(Ipv4Net::new(addr.addr, addr.prefixlen).unwrap());
-                                if tx.try_send((net, rm.peer.peeraddress.clone(), route.clone())).is_err() {
-                                    eprintln!("too slow! consider increasing buffer size");
-                                }
-                            }
-                        },
-                        zettabgp::afi::BgpAddrs::IPV6U(ref addrs) => {
-                            for addr in addrs {
-                                let net = IpNet::V6(Ipv6Net::new(addr.addr, addr.prefixlen).unwrap());
-                                if tx.try_send((net, rm.peer.peeraddress.clone(), route.clone())).is_err() {
-                                    eprintln!("too slow! consider increasing buffer size");
-                                }
-                            }
-                        },
-                        _ => continue,
+					}
+                    for net in bgp_addrs_to_nets(&rm.update.updates).into_iter() {
+                        update_nets.push((net, nexthop));
+                    }
+
+                    for (net, nexthop) in update_nets {
+                        let mut route = route.clone();
+                        route.nexthop = nexthop;
+                        if tx.try_send((net, table.clone(), route)).is_err() {
+                            eprintln!("too slow! consider increasing buffer size");
+                        }
                     }
                     continue;
                 }
@@ -203,8 +223,19 @@ Accepted, BmpMessageRouteMonitoring {
             }
         });
 
-//        RouteMonitoring(BmpMessageRouteMonitoring { peer: BmpMessagePeerHeader { peertype: 0, flags: 0, peerdistinguisher: BgpRD { rdh: 0, rdl: 0 }, peeraddress: 192.168.56.2, asnum: 207671, routerid: 1.2.3.5, timestamp: 7186750183483599786 }, update: BgpUpdateMessage { updates: IPV4U([BgpAddrV4 { addr: 124.150.32.0, prefixlen: 19 }]), withdraws: IPV4U([]), attrs: [Origin(BgpOrigin { value: Igp }), ASPath(BgpASpath { value: [BgpAS { value: 207671 }, BgpAS { value: 50629 }, BgpAS { value: 1299 }, BgpAS { value: 7545 }, BgpAS { value: 7545 }, BgpAS { value: 7545 }, BgpAS { value: 7545 }] }), NextHop(BgpNextHop { value: 192.168.56.2 }), LocalPref(BgpLocalpref { value: 100 }), CommunityList(BgpCommunityList { value: {Community { value: 85166264 }, Community { value: 3318022324 }, Community { value: 3318022449 }, Community { value: 3318023164 }, Community { value: 3318032145 }, Community { value: 3318032248 }, Community { value: 3318032352 }} })] } })
-//        RouteMonitoring(BmpMessageRouteMonitoring { peer: BmpMessagePeerHeader { peertype: 0, flags: 0, peerdistinguisher: BgpRD { rdh: 0, rdl: 0 }, peeraddress: 192.168.56.2, asnum: 207671, routerid: 1.2.3.5, timestamp: 7186750183483599786 }, update: BgpUpdateMessage { updates: IPV4U([BgpAddrV4 { addr: 14.202.44.0, prefixlen: 24 }]), withdraws: IPV4U([]), attrs: [Origin(BgpOrigin { value: Igp }), ASPath(BgpASpath { value: [BgpAS { value: 207671 }, BgpAS { value: 50629 }, BgpAS { value: 1299 }, BgpAS { value: 7545 }, BgpAS { value: 7545 }, BgpAS { value: 7545 }, BgpAS { value: 7545 }] }), NextHop(BgpNextHop { value: 192.168.56.2 }), LocalPref(BgpLocalpref { value: 100 }), CommunityList(BgpCommunityList { value: {Community { value: 85166264 }, Community { value: 3318022324 }, Community { value: 3318022449 }, Community { value: 3318023164 }, Community { value: 3318032145 }, Community { value: 3318032248 }, Community { value: 3318032352 }} })] } })
+    }
+}
 
+
+#[derive(Clone, Copy, Debug)]
+struct LocalExec;
+
+impl<F> hyper::rt::Executor<F> for LocalExec
+where
+    F: std::future::Future + 'static, // not requiring `Send`
+{
+    fn execute(&self, fut: F) {
+        // This will spawn into the currently running `LocalSet`.
+        tokio::task::spawn_local(fut);
     }
 }
