@@ -96,33 +96,39 @@ impl Table for InMemoryTable {
             }
         };
 
-        let nets_iter: Box<dyn Iterator<Item = (TableSelector, IpNet, Route)> + Send> = match query.net {
-            Some(NetQuery::Exact(net)) => {
-                Box::new(tables.into_iter().filter_map(move |(table_sel, table)| {
-                    let table = table.lock().unwrap();
-                    table.get(&net)
-                        .map(|has_route| (table_sel.clone(), net.clone(), has_route.clone()))
-                })
-                        .filter(nets_filter_fn)
-                         )
-            },
-            _ => {
-                Box::new(tables.into_iter().flat_map(move |(table_sel, table)| {
-                    let table = table.lock().unwrap();
-                    table.iter()
-                        .map(move |(net, route)| (table_sel.clone(), net.clone(), route.clone()))
-                        .filter(&nets_filter_fn)
-                        .take(200)
-                        .collect::<Vec<_>>()
-                        .into_iter()
-                }))
-            }
-        };
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
 
-        Box::pin(futures_util::stream::iter(
-            nets_iter
-                .take(200)
-        ))
+        rayon::spawn(move || {
+            match query.net {
+                Some(NetQuery::Exact(net)) => {
+                    tables.into_par_iter().filter_map(move |(table_sel, table)| {
+                        let table = table.lock().unwrap();
+                        table.get(&net)
+                            .map(|has_route| (table_sel.clone(), net.clone(), has_route.clone()))
+                    })
+                            // filter is accepting anything anyways
+                            //.filter(nets_filter_fn)
+                    //.take(200)
+                    .for_each_with(tx, |tx, res| tx.blocking_send(res).unwrap());
+                },
+                _ => {
+                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
+                        let table = table.lock().unwrap();
+                        table.iter()
+                            .map(move |(net, route)| (table_sel.clone(), net.clone(), route.clone()))
+                            .filter(&nets_filter_fn)
+                            .take(200)
+                            .collect::<Vec<_>>()
+                            .into_par_iter()
+                    })
+                    //.take(200)
+                    .for_each_with(tx, |tx, res| tx.blocking_send(res).unwrap());
+
+                }
+            };
+        });
+
+        Box::pin(ReceiverStream::new(rx))
     }
 
     async fn clear_router_table(&self, router: Ipv4Addr) {

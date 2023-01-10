@@ -11,12 +11,14 @@ async-trait = "0.1.61"
 futures-util = "0.3.25"
 hyper = { version = "0.14.23", features = ["server", "http1", "tcp", "stream"] }
 ipnet = { version = "2.7.1", features = ["serde"] }
+rayon = "1.6.1"
 regex = "1.7.1"
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.91"
 serde_yaml = "0.9.16"
 tokio = { version = "1.23.0", features = ["rt", "macros", "time"] }
 tokio-postgres = "0.7.7"
+tokio-stream = "0.1.11"
 tokio-util = { version = "0.7.4", features = ["codec"] }
 #bgpkit-parser = { version = "0.8" }
 zettabgp = "0.3.0"
