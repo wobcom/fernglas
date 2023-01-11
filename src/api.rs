@@ -1,19 +1,25 @@
 use axum::body::StreamBody;
 use axum::extract::{Query as AxumQuery, State};
-use axum::handler::Handler;
 use axum::response::IntoResponse;
+use axum::Router;
+use axum::routing::get;
 use crate::table::Query;
 use crate::table::Table;
 use futures_util::StreamExt;
 use std::convert::Infallible;
 
-async fn handle_request<T: Table>(State(table): State<T>, AxumQuery(query): AxumQuery<Query>) -> impl IntoResponse {
+async fn query<T: Table>(State(table): State<T>, AxumQuery(query): AxumQuery<Query>) -> impl IntoResponse {
     println!("request: {}", serde_json::to_string_pretty(&query).unwrap());
     let stream = table.get_routes(query)
         .map(|route| Ok::<_, Infallible>(serde_json::to_string(&route).unwrap()));
     StreamBody::new(stream)
 }
 
+fn make_api<T: Table>(table: T) -> Router {
+    Router::new()
+        .route("/query", get(query::<T>))
+        .with_state(table)
+}
 
 pub fn start_api_server_in_new_thread<T: Table>(table: T) {
 
@@ -27,7 +33,7 @@ pub fn start_api_server_in_new_thread<T: Table>(table: T) {
                 .unwrap();
             rt.block_on(async move {
                 let server = axum::Server::bind(&"[::]:3000".parse().unwrap())
-                    .serve(handle_request::<T>.with_state(table).into_make_service());
+                    .serve(make_api(table).into_make_service());
 
                 if let Err(e) = server.await {
                     eprintln!("server error: {}", e);
