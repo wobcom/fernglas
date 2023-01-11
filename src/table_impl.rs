@@ -29,8 +29,8 @@ impl InMemoryTable {
             TableSelector::PostPolicyAdjIn(session) => {
                 self.post_policy_adj_in.lock().unwrap().entry(session).or_insert(Default::default()).clone()
             }
-            TableSelector::LocRib(router_id) => {
-                self.loc_rib.lock().unwrap().entry(router_id).or_insert(Default::default()).clone()
+            TableSelector::LocRib { locrib_router_id } => {
+                self.loc_rib.lock().unwrap().entry(locrib_router_id).or_insert(Default::default()).clone()
             }
         }
     }
@@ -51,70 +51,63 @@ impl Table for InMemoryTable {
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = (TableSelector, IpNet, Route)> + Send>> {
-        let tables_filter_fn: Box<dyn FnMut(&(TableSelector, Arc<Mutex<HashMap<IpNet, Route>>>)) -> bool> = if let Some(table) = query.table {
-            Box::new(move |(k, _)| *k == table)
-        } else if let Some(router_id) = query.router_id {
-            Box::new(move |(k, _)| match k {
-                TableSelector::LocRib(r) => *r == router_id,
-                TableSelector::PostPolicyAdjIn(session) => session.local_router_id == router_id,
-                TableSelector::PrePolicyAdjIn(session) => session.local_router_id == router_id,
-            })
+
+        let tables = if let Some(table) = query.table {
+            vec![(table.clone(), self.get_table(table))]
         } else {
-            Box::new(|_| true)
-        };
-        let tables = {
+            let mut tables_filter_fn: Box<dyn FnMut(&(TableSelector, Arc<Mutex<HashMap<IpNet, Route>>>)) -> bool> = Box::new(|_| true);
+
+            if let Some(router_id) = query.router_id {
+                let new_filter_fn = move |(k, _): &(_, _)| {
+                    match &k {
+                        TableSelector::LocRib { locrib_router_id } => *locrib_router_id == router_id,
+                        TableSelector::PostPolicyAdjIn(session) => session.local_router_id == router_id,
+                        TableSelector::PrePolicyAdjIn(session) => session.local_router_id == router_id,
+                    }
+                };
+                tables_filter_fn = Box::new(move |i| tables_filter_fn(i) && new_filter_fn(i))
+            }
+
             let pre_policy_adj_in = self.pre_policy_adj_in.lock().unwrap();
             let post_policy_adj_in = self.post_policy_adj_in.lock().unwrap();
             let loc_rib = self.loc_rib.lock().unwrap();
 
-            loc_rib.iter().map(|(k, v)| (TableSelector::LocRib(k.clone()), v.clone()))
+            loc_rib.iter().map(|(k, v)| (TableSelector::LocRib { locrib_router_id: k.clone() }, v.clone()))
                 .chain(post_policy_adj_in.iter().map(|(k, v)| (TableSelector::PostPolicyAdjIn(k.clone()), v.clone())))
                 .chain(pre_policy_adj_in.iter().map(|(k, v)| (TableSelector::PrePolicyAdjIn(k.clone()), v.clone())))
                 .filter(tables_filter_fn)
                 .collect::<Vec<_>>()
         };
+        let mut nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Route)) -> bool + Send + Sync> = Box::new(|_| true);
 
-        let nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Route)) -> bool + Send + Sync> = match query.net {
-            Some(NetQuery::AsPathRegex(ref as_path_regex)) => {
-                let regex = Regex::new(as_path_regex).unwrap(); // FIXME error handling
-                Box::new(move |(_, _, route)| {
-                    let as_path_text = match &route.as_path {
-                        Some(as_path) => as_path.iter().map(|asn| asn.to_string()).collect::<Vec<_>>().join(" "),
-                        None => return false,
-                    };
-                    regex.is_match(&as_path_text)
-                })
-            }
-            Some(NetQuery::Contains(addr)) => {
-                Box::new(move |(_, net, _)| net.contains(&addr))
-            },
-            Some(NetQuery::ContainsMostSpecific(addr)) => {
-                todo!()
-            },
-            Some(NetQuery::OrLonger(net)) => {
-                todo!()
-            },
-            None | Some(NetQuery::Exact(_)) => {
-                Box::new(|_| true)
-            }
+        if let Some(as_path_regex) = query.as_path_regex {
+            let regex = Regex::new(&as_path_regex).unwrap(); // FIXME error handling
+            let new_filter_fn = move |(_, _, route): &(TableSelector, IpNet, Route)| {
+                let as_path_text = match &route.as_path {
+                    Some(as_path) => as_path.iter().map(|asn| asn.to_string()).collect::<Vec<_>>().join(" "),
+                    None => return false,
+                };
+                regex.is_match(&as_path_text)
+            };
+            nets_filter_fn = Box::new(move |i| nets_filter_fn(i) && new_filter_fn(i))
         };
 
         let (tx, rx) = tokio::sync::mpsc::channel(200);
 
         rayon::spawn(move || {
-            match query.net {
+            match query.net_query {
                 Some(NetQuery::Exact(net)) => {
                     tables.into_par_iter().filter_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
                         table.get(&net)
                             .map(|has_route| (table_sel.clone(), net.clone(), has_route.clone()))
                     })
-                            // filter is accepting anything anyways
-                            //.filter(nets_filter_fn)
+                    .filter(nets_filter_fn)
                     //.take(200)
                     .for_each_with(tx, |tx, res| tx.blocking_send(res).unwrap());
                 },
-                _ => {
+                Some(_) => todo!(),
+                None => {
                     tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
                         table.iter()

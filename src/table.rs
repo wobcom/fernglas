@@ -23,35 +23,42 @@ pub struct Route {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SessionId {
     pub local_router_id: Ipv4Addr,
     pub remote_router_id: Ipv4Addr,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(tag = "table")]
 pub enum TableSelector {
     PrePolicyAdjIn(SessionId),
     PostPolicyAdjIn(SessionId),
-    LocRib(Ipv4Addr),
+    LocRib {
+        locrib_router_id: Ipv4Addr,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub enum NetQuery {
-    AsPathRegex(String),
     Contains(IpAddr),
     ContainsMostSpecific(IpAddr),
     Exact(IpNet),
     OrLonger(IpNet),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Query {
-    pub router_id: Option<IpAddr>,
     #[serde(flatten)]
     pub table: Option<TableSelector>,
     #[serde(flatten)]
-    pub net: Option<NetQuery>,
+    pub net_query: Option<NetQuery>,
+    #[serde(default)]
+    pub router_id: Option<Ipv4Addr>,
+    #[serde(default)]
+    pub as_path_regex: Option<String>,
 }
 
 #[async_trait]

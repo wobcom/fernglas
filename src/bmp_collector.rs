@@ -77,7 +77,7 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
                             local_router_id: "0.0.0.0".parse().unwrap(), // FIXME
                             remote_router_id: rm.peer.routerid,
                         }),
-                        (3, _) => TableSelector::LocRib(rm.peer.routerid),
+                        (3, _) => TableSelector::LocRib { locrib_router_id: rm.peer.routerid },
                         _ => {
                             eprintln!("unknown peer type {} flags {:x}", rm.peer.peertype, rm.peer.flags);
                             continue;
