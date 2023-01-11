@@ -99,7 +99,7 @@ impl Table for InMemoryTable {
             }
         };
 
-        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        let (tx, rx) = tokio::sync::mpsc::channel(200);
 
         rayon::spawn(move || {
             match query.net {

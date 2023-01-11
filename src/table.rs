@@ -55,7 +55,7 @@ pub struct Query {
 }
 
 #[async_trait]
-pub trait Table {
+pub trait Table: Clone + Send + Sync + 'static {
     async fn update_route(&self, net: IpNet, table: TableSelector, route: Route);
 
     async fn withdraw_route(&self, net: IpNet, table: TableSelector);
