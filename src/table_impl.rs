@@ -2,6 +2,7 @@ use std::sync::Mutex;
 use regex::Regex;
 use std::pin::Pin;
 use futures_util::Stream;
+use futures_util::StreamExt;
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 use ipnet::IpNet;
@@ -96,7 +97,7 @@ impl Table for InMemoryTable {
             nets_filter_fn = Box::new(move |i| nets_filter_fn(i) && new_filter_fn(i))
         };
 
-        let (tx, rx) = tokio::sync::mpsc::channel(200);
+        let (tx, rx) = tokio::sync::mpsc::channel(2);
 
         rayon::spawn(move || {
             match query.net_query {
@@ -107,8 +108,7 @@ impl Table for InMemoryTable {
                             .map(|has_route| (table_sel.clone(), net.clone(), has_route.clone()))
                     })
                     .filter(nets_filter_fn)
-                    //.take(200)
-                    .for_each_with(tx, |tx, res| tx.blocking_send(res).unwrap());
+                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
                 Some(_) => todo!(),
                 None => {
@@ -121,14 +121,13 @@ impl Table for InMemoryTable {
                             .collect::<Vec<_>>()
                             .into_par_iter()
                     })
-                    //.take(200)
-                    .for_each_with(tx, |tx, res| tx.blocking_send(res).unwrap());
+                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
 
                 }
             };
         });
 
-        Box::pin(ReceiverStream::new(rx))
+        Box::pin(ReceiverStream::new(rx).take(500))
     }
 
     async fn clear_router_table(&self, router: Ipv4Addr) {
