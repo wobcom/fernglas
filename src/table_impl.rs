@@ -126,6 +126,32 @@ impl Table for InMemoryTable {
                     .filter(nets_filter_fn)
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
+                Some(NetQuery::Contains(net)) => {
+                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
+                        let table = table.lock().unwrap();
+
+                        let mut next_net = Some(net);
+                        let mut nets = vec![];
+                        while let Some(net) = next_net.take() {
+                            nets.push(net);
+                            next_net = net.supernet();
+                        }
+                        nets.into_iter().filter_map(|net| {
+                            table.subtrie(&IpNetKey(net))
+                                .and_then(|has_route| {
+                                    match (has_route.key(), has_route.value()) {
+                                        (Some(k), Some(v)) => Some((table_sel.clone(), k.0.clone(), v.clone())),
+                                        _ => None,
+                                    }
+                                })
+                        })
+                        .filter(&nets_filter_fn)
+                        .take(200)
+                        .collect::<Vec<_>>()
+                        .into_par_iter()
+                    })
+                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
+                },
                 Some(NetQuery::ContainsMostSpecific(net)) => {
                     tables.into_par_iter().filter_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
