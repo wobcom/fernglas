@@ -51,8 +51,8 @@ pub enum TableQuery {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum NetQuery {
-    Contains(IpAddr),
-    ContainsMostSpecific(IpAddr),
+    Contains(IpNet),
+    ContainsMostSpecific(IpNet),
     Exact(IpNet),
     OrLonger(IpNet),
 }

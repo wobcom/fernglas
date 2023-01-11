@@ -11,10 +11,26 @@ use async_trait::async_trait;
 use tokio_stream::wrappers::ReceiverStream;
 use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelIterator;
+use bitvec::prelude::Msb0;
+use bitvec::view::BitView;
+use radix_trie::{Trie, TrieKey, TrieCommon};
 
 use crate::table::{Route, Query, SessionId, TableSelector, Table, NetQuery, TableQuery};
 
-type RouteMap = Arc<Mutex<HashMap<IpNet, Route>>>;
+#[derive(PartialEq, Eq)]
+struct IpNetKey(IpNet);
+
+impl TrieKey for IpNetKey {
+    fn encode_bytes(&self) -> Vec<u8> {
+        let (ip, prefixlen) = match self.0 {
+            IpNet::V4(v4) => (v4.addr().to_ipv6_mapped(), v4.prefix_len() + 96),
+            IpNet::V6(v6) => (v6.addr(), v6.prefix_len()),
+        };
+        ip.octets()[..].view_bits::<Msb0>()[..(prefixlen as usize)].iter().map(|x| (*x.as_ref()).into()).collect()
+    }
+}
+
+type RouteMap = Arc<Mutex<Trie<IpNetKey, Route>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
@@ -65,13 +81,13 @@ impl Table for InMemoryTable {
     async fn update_route(&self, net: IpNet, table: TableSelector, route: Route) {
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.insert(net, route);
+        table.insert(IpNetKey(net), route);
     }
 
     async fn withdraw_route(&self, net: IpNet, table: TableSelector) {
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.remove(&net);
+        table.remove(&IpNetKey(net));
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = (TableSelector, IpNet, Route)> + Send>> {
@@ -104,8 +120,22 @@ impl Table for InMemoryTable {
                 Some(NetQuery::Exact(net)) => {
                     tables.into_par_iter().filter_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
-                        table.get(&net)
+                        table.get(&IpNetKey(net))
                             .map(|has_route| (table_sel.clone(), net.clone(), has_route.clone()))
+                    })
+                    .filter(nets_filter_fn)
+                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
+                },
+                Some(NetQuery::ContainsMostSpecific(net)) => {
+                    tables.into_par_iter().filter_map(move |(table_sel, table)| {
+                        let table = table.lock().unwrap();
+                        table.get_ancestor(&IpNetKey(net))
+                            .and_then(|has_route| {
+                                match (has_route.key(), has_route.value()) {
+                                    (Some(k), Some(v)) => Some((table_sel.clone(), k.0.clone(), v.clone())),
+                                    _ => None,
+                                }
+                            })
                     })
                     .filter(nets_filter_fn)
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
@@ -115,7 +145,7 @@ impl Table for InMemoryTable {
                     tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
                         table.iter()
-                            .map(move |(net, route)| (table_sel.clone(), net.clone(), route.clone()))
+                            .map(move |(net, route)| (table_sel.clone(), net.0.clone(), route.clone()))
                             .filter(&nets_filter_fn)
                             .take(200)
                             .collect::<Vec<_>>()

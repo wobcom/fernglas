@@ -9,8 +9,10 @@ edition = "2021"
 anyhow = "1.0.68"
 async-trait = "0.1.61"
 axum = { version = "0.6.2", default-features = false, features = ["query", "http1", "tokio"] }
+bitvec = "1.0.1"
 futures-util = "0.3.25"
 ipnet = { version = "2.7.1", features = ["serde"] }
+radix_trie = "0.2.1"
 rayon = "1.6.1"
 regex = "1.7.1"
 serde = { version = "1.0.152", features = ["derive"] }
