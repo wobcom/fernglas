@@ -41,6 +41,14 @@ pub enum TableSelector {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum TableQuery {
+    Table(TableSelector),
+    Session(SessionId),
+    Router { router_id: Ipv4Addr },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum NetQuery {
     Contains(IpAddr),
@@ -50,13 +58,12 @@ pub enum NetQuery {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Query {
     #[serde(flatten)]
-    pub table: Option<TableSelector>,
+    pub table_query: Option<TableQuery>,
     #[serde(flatten)]
     pub net_query: Option<NetQuery>,
-    #[serde(default)]
-    pub router_id: Option<Ipv4Addr>,
     #[serde(default)]
     pub as_path_regex: Option<String>,
 }

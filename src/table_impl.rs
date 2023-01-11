@@ -11,28 +11,51 @@ use tokio_stream::wrappers::ReceiverStream;
 use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelIterator;
 
-use crate::table::{Route, Query, SessionId, TableSelector, Table, NetQuery};
+use crate::table::{Route, Query, SessionId, TableSelector, Table, NetQuery, TableQuery};
+
+type RouteMap = Arc<Mutex<HashMap<IpNet, Route>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
-    pre_policy_adj_in: Arc<Mutex<HashMap<SessionId, Arc<Mutex<HashMap<IpNet, Route>>>>>>,
-    post_policy_adj_in: Arc<Mutex<HashMap<SessionId, Arc<Mutex<HashMap<IpNet, Route>>>>>>,
-    loc_rib: Arc<Mutex<HashMap<Ipv4Addr, Arc<Mutex<HashMap<IpNet, Route>>>>>>,
+    tables: Arc<Mutex<HashMap<TableSelector, RouteMap>>>,
+}
+
+fn tables_for_router_fn(router_id: Ipv4Addr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
+    move |(k, _): &(_, _)| {
+        match &k {
+            TableSelector::LocRib { locrib_router_id } => *locrib_router_id == router_id,
+            TableSelector::PostPolicyAdjIn(session) => session.local_router_id == router_id,
+            TableSelector::PrePolicyAdjIn(session) => session.local_router_id == router_id,
+        }
+    }
+}
+fn tables_for_session_fn(session_id: SessionId) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
+    move |(k, _): &(_, _)| {
+        match &k {
+            TableSelector::LocRib { .. } => false,
+            TableSelector::PostPolicyAdjIn(session) => *session == session_id,
+            TableSelector::PrePolicyAdjIn(session) => *session == session_id,
+        }
+    }
 }
 
 impl InMemoryTable {
-    fn get_table(&self, sel: TableSelector) -> Arc<Mutex<HashMap<IpNet, Route>>> {
-        match sel {
-            TableSelector::PrePolicyAdjIn(session) => {
-                self.pre_policy_adj_in.lock().unwrap().entry(session).or_insert(Default::default()).clone()
-            }
-            TableSelector::PostPolicyAdjIn(session) => {
-                self.post_policy_adj_in.lock().unwrap().entry(session).or_insert(Default::default()).clone()
-            }
-            TableSelector::LocRib { locrib_router_id } => {
-                self.loc_rib.lock().unwrap().entry(locrib_router_id).or_insert(Default::default()).clone()
-            }
-        }
+    fn get_table(&self, sel: TableSelector) -> RouteMap {
+        self.tables.lock().unwrap().entry(sel).or_insert(Default::default()).clone()
+    }
+    fn get_tables_for_router(&self, router_id: Ipv4Addr) -> Vec<(TableSelector, RouteMap)> {
+        self.tables.lock().unwrap()
+            .iter()
+            .filter(tables_for_router_fn(router_id))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+    fn get_tables_for_session(&self, session_id: SessionId) -> Vec<(TableSelector, RouteMap)> {
+        self.tables.lock().unwrap()
+            .iter()
+            .filter(tables_for_session_fn(session_id))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
 }
 
@@ -52,32 +75,13 @@ impl Table for InMemoryTable {
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = (TableSelector, IpNet, Route)> + Send>> {
 
-        let tables = if let Some(table) = query.table {
-            vec![(table.clone(), self.get_table(table))]
-        } else {
-            let mut tables_filter_fn: Box<dyn FnMut(&(TableSelector, Arc<Mutex<HashMap<IpNet, Route>>>)) -> bool> = Box::new(|_| true);
-
-            if let Some(router_id) = query.router_id {
-                let new_filter_fn = move |(k, _): &(_, _)| {
-                    match &k {
-                        TableSelector::LocRib { locrib_router_id } => *locrib_router_id == router_id,
-                        TableSelector::PostPolicyAdjIn(session) => session.local_router_id == router_id,
-                        TableSelector::PrePolicyAdjIn(session) => session.local_router_id == router_id,
-                    }
-                };
-                tables_filter_fn = Box::new(move |i| tables_filter_fn(i) && new_filter_fn(i))
-            }
-
-            let pre_policy_adj_in = self.pre_policy_adj_in.lock().unwrap();
-            let post_policy_adj_in = self.post_policy_adj_in.lock().unwrap();
-            let loc_rib = self.loc_rib.lock().unwrap();
-
-            loc_rib.iter().map(|(k, v)| (TableSelector::LocRib { locrib_router_id: k.clone() }, v.clone()))
-                .chain(post_policy_adj_in.iter().map(|(k, v)| (TableSelector::PostPolicyAdjIn(k.clone()), v.clone())))
-                .chain(pre_policy_adj_in.iter().map(|(k, v)| (TableSelector::PrePolicyAdjIn(k.clone()), v.clone())))
-                .filter(tables_filter_fn)
-                .collect::<Vec<_>>()
+        let tables = match query.table_query {
+            Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
+            Some(TableQuery::Router { router_id }) => self.get_tables_for_router(router_id),
+            Some(TableQuery::Session(session_id)) => self.get_tables_for_session(session_id),
+            None => self.tables.lock().unwrap().clone().into_iter().collect(),
         };
+
         let mut nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Route)) -> bool + Send + Sync> = Box::new(|_| true);
 
         if let Some(as_path_regex) = query.as_path_regex {
@@ -128,13 +132,10 @@ impl Table for InMemoryTable {
     }
 
     async fn clear_router_table(&self, router: Ipv4Addr) {
-        self.loc_rib.lock().unwrap().remove(&router);
-        self.pre_policy_adj_in.lock().unwrap().retain(|k, _| k.local_router_id != router);
-        self.post_policy_adj_in.lock().unwrap().retain(|k, _| k.local_router_id != router);
+        self.tables.lock().unwrap().retain(|k, v| !(tables_for_router_fn(router)(&(k, v))));
     }
 
     async fn clear_peer_table(&self, session: SessionId) {
-        self.pre_policy_adj_in.lock().unwrap().remove(&session);
-        self.post_policy_adj_in.lock().unwrap().remove(&session);
+        self.tables.lock().unwrap().retain(|k, v| !(tables_for_session_fn(session.clone())(&(k, v))));
     }
 }
