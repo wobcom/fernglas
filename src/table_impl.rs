@@ -40,23 +40,18 @@ macro_rules! decode_net {
 }
 
 fn to_key(net: &IpNet) -> Vec<u8> {
-    let (ip, prefixlen) = match net {
-        IpNet::V4(v4) => (v4.addr().to_ipv6_mapped(), v4.prefix_len() + 96),
-        IpNet::V6(v6) => (v6.addr(), v6.prefix_len()),
-    };
-    ip.octets()[..].view_bits::<Msb0>()[..(prefixlen as usize)].iter().map(|x| (*x.as_ref()).into()).collect()
+    match net {
+        IpNet::V4(net) => encode_net!(net, 4),
+        IpNet::V6(net) => encode_net!(net, 6),
+    }
 }
+
 fn from_key(key: &[u8]) -> IpNet {
-    let mut addr = [0u8; 16];
-    let addr_view = addr.view_bits_mut::<Msb0>();
-    for (i, bit) in key.iter().enumerate() {
-        *addr_view.get_mut(i).unwrap() = *bit != 0;
+    match key[0] {
+        4 => decode_net!(key, 4, V4, Ipv4Net, Ipv4Addr),
+        6 => decode_net!(key, 16, V6, Ipv6Net, Ipv6Addr),
+        _ => panic!("invalid key encoding"),
     }
-    let ip = Ipv6Addr::from(addr);
-    if let Some(ipv4_mapped) = ip.to_ipv4_mapped() {
-        return IpNet::V4(Ipv4Net::new(ipv4_mapped, (key.len() - 96) as u8).unwrap());
-    }
-    return IpNet::V6(Ipv6Net::new(ip, key.len() as u8).unwrap());
 }
 
 type RouteMap = Arc<Mutex<PatriciaMap<Route>>>;
