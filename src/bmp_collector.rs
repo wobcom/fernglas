@@ -14,7 +14,7 @@ use zettabgp::prelude::BgpCommunityList;
 use zettabgp::prelude::BgpAddr;
 use zettabgp::bmp::BmpMessage;
 use zettabgp::prelude::BgpAttrItem;
-use crate::table::{Table, TableSelector, Route, RouteOrigin, SessionId};
+use crate::table::{Table, TableSelector, RouteAttrs, RouteOrigin, SessionId};
 
 fn bgp_addrs_to_nets(addrs: &BgpAddrs) -> Vec<IpNet> {
     let mut res = vec![];
@@ -84,7 +84,7 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
                         }
                     };
 
-                    let mut route: Route = Default::default();
+                    let mut attrs: RouteAttrs = Default::default();
                     let mut nexthop = None;
                     let mut update_nets = vec![];
                     let mut withdraw_nets = vec![];
@@ -113,13 +113,13 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
                                 for community in value.into_iter() {
                                     communities.push(((community.value >> 16) as u16, (community.value & 0xff) as u16));
                                 }
-                                route.communities = Some(communities);
+                                attrs.communities = Some(communities);
                             }
                             BgpAttrItem::MED(BgpMED { value }) => {
-                                route.med = Some(value);
+                                attrs.med = Some(value);
                             }
                             BgpAttrItem::Origin(BgpOrigin { value }) => {
-                                route.origin = Some(match value {
+                                attrs.origin = Some(match value {
                                     BgpAttrOrigin::Igp => RouteOrigin::Igp,
                                     BgpAttrOrigin::Egp => RouteOrigin::Egp,
                                     BgpAttrOrigin::Incomplete => RouteOrigin::Incomplete,
@@ -130,14 +130,14 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
                                 for asn in value {
                                     as_path.push(asn.value);
                                 }
-                                route.as_path = Some(as_path);
+                                attrs.as_path = Some(as_path);
                             }
                             BgpAttrItem::LargeCommunityList(BgpLargeCommunityList { value }) => {
                                 let mut communities = vec![];
                                 for community in value.into_iter() {
                                     communities.push((community.ga, community.ldp1, community.ldp2));
                                 }
-                                route.large_communities = Some(communities);
+                                attrs.large_communities = Some(communities);
                             }
                             _ => {},
                         }
@@ -150,9 +150,9 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
                     }
 
                     for (net, nexthop) in update_nets {
-                        let mut route = route.clone();
-                        route.nexthop = nexthop;
-                        table.update_route(net, session.clone(), route).await;
+                        let mut attrs = attrs.clone();
+                        attrs.nexthop = nexthop;
+                        table.update_route(net, session.clone(), attrs).await;
                     }
                     for net in withdraw_nets {
                         table.withdraw_route(net, session.clone()).await;

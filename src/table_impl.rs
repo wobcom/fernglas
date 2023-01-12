@@ -15,7 +15,7 @@ use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
 use patricia_tree::PatriciaMap;
 
-use crate::table::{Route, Query, SessionId, TableSelector, Table, NetQuery, TableQuery};
+use crate::table::{RouteAttrs, Query, SessionId, TableSelector, Table, NetQuery, TableQuery, QueryResult};
 
 macro_rules! encode_net {
     ($input:ident, $identifier:expr) => {
@@ -54,7 +54,7 @@ fn from_key(key: &[u8]) -> IpNet {
     }
 }
 
-type RouteMap = Arc<Mutex<PatriciaMap<Route>>>;
+type RouteMap = Arc<Mutex<PatriciaMap<RouteAttrs>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
@@ -102,7 +102,7 @@ impl InMemoryTable {
 
 #[async_trait]
 impl Table for InMemoryTable {
-    async fn update_route(&self, net: IpNet, table: TableSelector, route: Route) {
+    async fn update_route(&self, net: IpNet, table: TableSelector, route: RouteAttrs) {
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
         table.insert(to_key(&net), route);
@@ -114,7 +114,7 @@ impl Table for InMemoryTable {
         table.remove(to_key(&net));
     }
 
-    fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = (TableSelector, IpNet, Route)> + Send>> {
+    fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
 
         let tables = match query.table_query {
             Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
@@ -123,11 +123,11 @@ impl Table for InMemoryTable {
             None => self.tables.lock().unwrap().clone().into_iter().collect(),
         };
 
-        let mut nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Route)) -> bool + Send + Sync> = Box::new(|_| true);
+        let mut nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, RouteAttrs)) -> bool + Send + Sync> = Box::new(|_| true);
 
         if let Some(as_path_regex) = query.as_path_regex {
             let regex = Regex::new(&as_path_regex).unwrap(); // FIXME error handling
-            let new_filter_fn = move |(_, _, route): &(TableSelector, IpNet, Route)| {
+            let new_filter_fn = move |(_, _, route): &(TableSelector, IpNet, RouteAttrs)| {
                 let as_path_text = match &route.as_path {
                     Some(as_path) => as_path.iter().map(|asn| asn.to_string()).collect::<Vec<_>>().join(" "),
                     None => return false,
@@ -189,7 +189,7 @@ impl Table for InMemoryTable {
             };
         });
 
-        Box::pin(ReceiverStream::new(rx).take(500))
+        Box::pin(ReceiverStream::new(rx).map(|(table, net, attrs)| QueryResult { net, table, attrs }).take(500))
     }
 
     async fn clear_router_table(&self, router: SocketAddr) {

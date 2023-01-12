@@ -13,7 +13,7 @@ pub enum RouteOrigin {
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
-pub struct Route {
+pub struct RouteAttrs {
     pub origin: Option<RouteOrigin>,
     pub as_path: Option<Vec<u32>>,
     pub communities: Option<Vec<(u16, u16)>>,
@@ -67,13 +67,23 @@ pub struct Query {
     pub as_path_regex: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct QueryResult {
+    pub net: IpNet,
+    #[serde(flatten)]
+    pub table: TableSelector,
+    #[serde(flatten)]
+    pub attrs: RouteAttrs,
+}
+
 #[async_trait]
 pub trait Table: Clone + Send + Sync + 'static {
-    async fn update_route(&self, net: IpNet, table: TableSelector, route: Route);
+    async fn update_route(&self, net: IpNet, table: TableSelector, attrs: RouteAttrs);
 
     async fn withdraw_route(&self, net: IpNet, table: TableSelector);
 
-    fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = (TableSelector, IpNet, Route)> + Send>>;
+    fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>>;
 
     async fn clear_router_table(&self, router: SocketAddr);
 
