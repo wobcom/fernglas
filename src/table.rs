@@ -52,7 +52,7 @@ pub enum TableQuery {
 #[serde(deny_unknown_fields)]
 pub enum NetQuery {
     Contains(IpNet),
-    ContainsMostSpecific(IpNet),
+    MostSpecific(IpNet),
     Exact(IpNet),
     OrLonger(IpNet),
 }

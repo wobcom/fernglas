@@ -3,9 +3,9 @@ use regex::Regex;
 use std::pin::Pin;
 use futures_util::Stream;
 use futures_util::StreamExt;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::sync::Arc;
-use ipnet::IpNet;
+use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use std::collections::HashMap;
 use async_trait::async_trait;
 use tokio_stream::wrappers::ReceiverStream;
@@ -13,24 +13,53 @@ use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelIterator;
 use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
-use radix_trie::{Trie, TrieKey, TrieCommon};
+use patricia_tree::PatriciaMap;
 
 use crate::table::{Route, Query, SessionId, TableSelector, Table, NetQuery, TableQuery};
 
-#[derive(PartialEq, Eq)]
-struct IpNetKey(IpNet);
-
-impl TrieKey for IpNetKey {
-    fn encode_bytes(&self) -> Vec<u8> {
-        let (ip, prefixlen) = match self.0 {
-            IpNet::V4(v4) => (v4.addr().to_ipv6_mapped(), v4.prefix_len() + 96),
-            IpNet::V6(v6) => (v6.addr(), v6.prefix_len()),
-        };
-        ip.octets()[..].view_bits::<Msb0>()[..(prefixlen as usize)].iter().map(|x| (*x.as_ref()).into()).collect()
+macro_rules! encode_net {
+    ($input:ident, $identifier:expr) => {
+        {
+            let mut key = vec![$identifier];
+            key.extend($input.addr().octets()[..].view_bits::<Msb0>()[..($input.prefix_len() as usize)].iter().map(|x| u8::from(*x.as_ref())));
+            key
+        }
+    }
+}
+macro_rules! decode_net {
+    ($input:ident, $bytes:expr, $net_variant:ident, $net_type:ty, $addr_type:ty) => {
+        {
+            let mut addr = [0u8; $bytes];
+            let addr_view = addr.view_bits_mut::<Msb0>();
+            for (i, bit) in $input[1..].iter().enumerate() {
+                *addr_view.get_mut(i).unwrap() = *bit != 0;
+            }
+            IpNet::$net_variant(<$net_type>::new(<$addr_type>::from(addr), ($input.len() - 1) as u8).unwrap())
+        }
     }
 }
 
-type RouteMap = Arc<Mutex<Trie<IpNetKey, Route>>>;
+fn to_key(net: &IpNet) -> Vec<u8> {
+    let (ip, prefixlen) = match net {
+        IpNet::V4(v4) => (v4.addr().to_ipv6_mapped(), v4.prefix_len() + 96),
+        IpNet::V6(v6) => (v6.addr(), v6.prefix_len()),
+    };
+    ip.octets()[..].view_bits::<Msb0>()[..(prefixlen as usize)].iter().map(|x| (*x.as_ref()).into()).collect()
+}
+fn from_key(key: &[u8]) -> IpNet {
+    let mut addr = [0u8; 16];
+    let addr_view = addr.view_bits_mut::<Msb0>();
+    for (i, bit) in key.iter().enumerate() {
+        *addr_view.get_mut(i).unwrap() = *bit != 0;
+    }
+    let ip = Ipv6Addr::from(addr);
+    if let Some(ipv4_mapped) = ip.to_ipv4_mapped() {
+        return IpNet::V4(Ipv4Net::new(ipv4_mapped, (key.len() - 96) as u8).unwrap());
+    }
+    return IpNet::V6(Ipv6Net::new(ip, key.len() as u8).unwrap());
+}
+
+type RouteMap = Arc<Mutex<PatriciaMap<Route>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
@@ -81,13 +110,13 @@ impl Table for InMemoryTable {
     async fn update_route(&self, net: IpNet, table: TableSelector, route: Route) {
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.insert(IpNetKey(net), route);
+        table.insert(to_key(&net), route);
     }
 
     async fn withdraw_route(&self, net: IpNet, table: TableSelector) {
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.remove(&IpNetKey(net));
+        table.remove(to_key(&net));
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = (TableSelector, IpNet, Route)> + Send>> {
@@ -120,31 +149,28 @@ impl Table for InMemoryTable {
                 Some(NetQuery::Exact(net)) => {
                     tables.into_par_iter().filter_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
-                        table.get(&IpNetKey(net))
+                        table.get(to_key(&net))
                             .map(|has_route| (table_sel.clone(), net.clone(), has_route.clone()))
                     })
                     .filter(nets_filter_fn)
+                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
+                },
+                Some(NetQuery::MostSpecific(net)) => {
+                    tables.into_par_iter().filter_map(move |(table_sel, table)| {
+                        let table = table.lock().unwrap();
+
+                        table.get_longest_common_prefix(&to_key(&net))
+                            .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
+                            .filter(&nets_filter_fn)
+                    })
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
                 Some(NetQuery::Contains(net)) => {
                     tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
 
-                        let mut next_net = Some(net);
-                        let mut nets = vec![];
-                        while let Some(net) = next_net.take() {
-                            nets.push(net);
-                            next_net = net.supernet();
-                        }
-                        nets.into_iter().filter_map(|net| {
-                            table.subtrie(&IpNetKey(net))
-                                .and_then(|has_route| {
-                                    match (has_route.key(), has_route.value()) {
-                                        (Some(k), Some(v)) => Some((table_sel.clone(), k.0.clone(), v.clone())),
-                                        _ => None,
-                                    }
-                                })
-                        })
+                        table.common_prefixes(&to_key(&net))
+                            .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
                         .filter(&nets_filter_fn)
                         .take(200)
                         .collect::<Vec<_>>()
@@ -152,26 +178,24 @@ impl Table for InMemoryTable {
                     })
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
-                Some(NetQuery::ContainsMostSpecific(net)) => {
-                    tables.into_par_iter().filter_map(move |(table_sel, table)| {
+                Some(NetQuery::OrLonger(net)) => {
+                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
-                        table.get_ancestor(&IpNetKey(net))
-                            .and_then(|has_route| {
-                                match (has_route.key(), has_route.value()) {
-                                    (Some(k), Some(v)) => Some((table_sel.clone(), k.0.clone(), v.clone())),
-                                    _ => None,
-                                }
-                            })
+
+                        table.iter_prefix(&to_key(&net))
+                            .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
+                        .filter(&nets_filter_fn)
+                        .take(200)
+                        .collect::<Vec<_>>()
+                        .into_par_iter()
                     })
-                    .filter(nets_filter_fn)
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
-                Some(_) => todo!(),
                 None => {
                     tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
                         table.iter()
-                            .map(move |(net, route)| (table_sel.clone(), net.0.clone(), route.clone()))
+                            .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
                             .filter(&nets_filter_fn)
                             .take(200)
                             .collect::<Vec<_>>()
