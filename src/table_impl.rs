@@ -141,7 +141,7 @@ impl Table for InMemoryTable {
 
         rayon::spawn(move || {
             match query.net_query {
-                Some(NetQuery::Exact(net)) => {
+                NetQuery::Exact(net) => {
                     tables.into_par_iter().filter_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
                         table.get(to_key(&net))
@@ -150,7 +150,7 @@ impl Table for InMemoryTable {
                     .filter(nets_filter_fn)
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
-                Some(NetQuery::MostSpecific(net)) => {
+                NetQuery::MostSpecific(net) => {
                     tables.into_par_iter().filter_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
 
@@ -160,7 +160,7 @@ impl Table for InMemoryTable {
                     })
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
-                Some(NetQuery::Contains(net)) => {
+                NetQuery::Contains(net) => {
                     tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
 
@@ -173,7 +173,7 @@ impl Table for InMemoryTable {
                     })
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
-                Some(NetQuery::OrLonger(net)) => {
+                NetQuery::OrLonger(net) => {
                     tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
 
@@ -186,19 +186,6 @@ impl Table for InMemoryTable {
                     })
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
-                None => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-                        table.iter()
-                            .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
-                            .filter(&nets_filter_fn)
-                            .take(200)
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-
-                }
             };
         });
 
