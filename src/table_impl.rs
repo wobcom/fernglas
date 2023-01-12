@@ -123,7 +123,7 @@ impl Table for InMemoryTable {
 
         let tables = match query.table_query {
             Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
-            Some(TableQuery::Router { router_id }) => self.get_tables_for_router(router_id),
+            Some(TableQuery::Router(router_id)) => self.get_tables_for_router(router_id),
             Some(TableQuery::Session(session_id)) => self.get_tables_for_session(session_id),
             None => self.tables.lock().unwrap().clone().into_iter().collect(),
         };

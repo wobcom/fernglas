@@ -41,11 +41,10 @@ pub enum TableSelector {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
 pub enum TableQuery {
     Table(TableSelector),
     Session(SessionId),
-    Router { router_id: Ipv4Addr },
+    Router(Ipv4Addr),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
