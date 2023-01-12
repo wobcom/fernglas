@@ -1,6 +1,6 @@
 use std::pin::Pin;
 use futures_util::Stream;
-use std::net::{Ipv4Addr, IpAddr};
+use std::net::{Ipv4Addr, IpAddr, SocketAddr};
 use ipnet::IpNet;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub struct Route {
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionId {
-    pub local_router_id: Ipv4Addr,
+    pub from_client: SocketAddr,
     pub remote_router_id: Ipv4Addr,
 }
 
@@ -36,7 +36,7 @@ pub enum TableSelector {
     PrePolicyAdjIn(SessionId),
     PostPolicyAdjIn(SessionId),
     LocRib {
-        locrib_router_id: Ipv4Addr,
+        from_client: SocketAddr,
     },
 }
 
@@ -44,7 +44,7 @@ pub enum TableSelector {
 pub enum TableQuery {
     Table(TableSelector),
     Session(SessionId),
-    Router(Ipv4Addr),
+    Router(SocketAddr),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,7 +75,7 @@ pub trait Table: Clone + Send + Sync + 'static {
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = (TableSelector, IpNet, Route)> + Send>>;
 
-    async fn clear_router_table(&self, router: Ipv4Addr);
+    async fn clear_router_table(&self, router: SocketAddr);
 
     async fn clear_peer_table(&self, session: SessionId);
 }

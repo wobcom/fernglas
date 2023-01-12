@@ -40,8 +40,8 @@ fn bgp_addrs_to_nets(addrs: &BgpAddrs) -> Vec<IpNet> {
 pub async fn run(table: impl Table) -> anyhow::Result<()> {
     let listener = TcpListener::bind("[::]:11019").await?;
     loop {
-        let (io, so) = listener.accept().await?;
-        eprintln!("connected {:?}", so);
+        let (io, client_addr) = listener.accept().await?;
+        eprintln!("connected {:?}", client_addr);
 
         let table = table.clone();
         tokio::spawn(async move {
@@ -70,14 +70,14 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
                 if let BmpMessage::RouteMonitoring(rm) = msg {
                     let session = match (rm.peer.peertype, (rm.peer.flags & 64) != 0) {
                         (0, false) => TableSelector::PrePolicyAdjIn(SessionId {
-                            local_router_id: "0.0.0.0".parse().unwrap(), // FIXME
+                            from_client: client_addr,
                             remote_router_id: rm.peer.routerid,
                         }),
                         (0, true) => TableSelector::PostPolicyAdjIn(SessionId {
-                            local_router_id: "0.0.0.0".parse().unwrap(), // FIXME
+                            from_client: client_addr,
                             remote_router_id: rm.peer.routerid,
                         }),
-                        (3, _) => TableSelector::LocRib { locrib_router_id: rm.peer.routerid },
+                        (3, _) => TableSelector::LocRib { from_client: client_addr },
                         _ => {
                             eprintln!("unknown peer type {} flags {:x}", rm.peer.peertype, rm.peer.flags);
                             continue;

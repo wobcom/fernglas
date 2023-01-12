@@ -3,7 +3,7 @@ use regex::Regex;
 use std::pin::Pin;
 use futures_util::Stream;
 use futures_util::StreamExt;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use std::collections::HashMap;
@@ -61,12 +61,12 @@ pub struct InMemoryTable {
     tables: Arc<Mutex<HashMap<TableSelector, RouteMap>>>,
 }
 
-fn tables_for_router_fn(router_id: Ipv4Addr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
+fn tables_for_router_fn(query_from_client: SocketAddr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
     move |(k, _): &(_, _)| {
         match &k {
-            TableSelector::LocRib { locrib_router_id } => *locrib_router_id == router_id,
-            TableSelector::PostPolicyAdjIn(session) => session.local_router_id == router_id,
-            TableSelector::PrePolicyAdjIn(session) => session.local_router_id == router_id,
+            TableSelector::LocRib { from_client } => *from_client == query_from_client,
+            TableSelector::PostPolicyAdjIn(session) => session.from_client == query_from_client,
+            TableSelector::PrePolicyAdjIn(session) => session.from_client == query_from_client,
         }
     }
 }
@@ -84,10 +84,10 @@ impl InMemoryTable {
     fn get_table(&self, sel: TableSelector) -> RouteMap {
         self.tables.lock().unwrap().entry(sel).or_insert(Default::default()).clone()
     }
-    fn get_tables_for_router(&self, router_id: Ipv4Addr) -> Vec<(TableSelector, RouteMap)> {
+    fn get_tables_for_router(&self, router: SocketAddr) -> Vec<(TableSelector, RouteMap)> {
         self.tables.lock().unwrap()
             .iter()
-            .filter(tables_for_router_fn(router_id))
+            .filter(tables_for_router_fn(router))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
@@ -192,7 +192,7 @@ impl Table for InMemoryTable {
         Box::pin(ReceiverStream::new(rx).take(500))
     }
 
-    async fn clear_router_table(&self, router: Ipv4Addr) {
+    async fn clear_router_table(&self, router: SocketAddr) {
         self.tables.lock().unwrap().retain(|k, v| !(tables_for_router_fn(router)(&(k, v))));
     }
 
