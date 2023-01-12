@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>Fernglas</title>
+		<meta charset="UTF-8">
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<meta name="theme-color" content="#ffffff">
+		<meta name="description" content="Fernglas">
+
+		<link rel="icon" type="image/png" sizes="64x64" href="/favicon-64x64.png">
+		<link rel="manifest" href="/manifest.json">
+		<link rel="stylesheet" type="text/css" href="style.css">
+
+		<link rel="modulepreload" href="index.js">
+		<link rel="manifest" href="manifest.json">
+		<style>
+body {
+	margin: 0;
+	background-color: #222;
+	font-family: sans-serif;
+	color: white;
+}
+
+#loader-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	height: 100vh;
+	width: 100vw;
+	background-color: rgba(0, 0, 0, .7);
+	overflow: hidden;
+	display: flex;
+}
+
+#loader-overlay>* {
+	margin: auto;
+}
+
+.loader-spinner {
+
+	margin: calc(50vh - 60px) auto;
+
+	border: 5px solid rgba(255, 255, 255, .4);
+
+	border-top: 5px solid #fff;
+
+	border-radius: 50%;
+
+	width: 120px;
+
+	height: 120px;
+
+	animation: loader-spin 2s linear infinite;
+
+}
+
+@keyframes loader-spin {
+
+	0% { transform: rotate(0deg); }
+
+	100% { transform: rotate(360deg); }
+
+}
+
+
+		</style>
+	</head>
+	<body>
+		<div id="content"></div>
+		<div id="loader-overlay">
+			<noscript>JavaScript is required to use Fernglas</noscript>
+			<div class="loader-spinner"></div>
+		</div>
+		<div id="overlay" class="hidden"></div>
+		<script type="module" src="index.js"></script>
+	</body>
+</html>
+
+

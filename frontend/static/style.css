@@ -1,0 +1,173 @@
+h1 {
+	font-weight: normal;
+}
+
+
+body {
+	margin: 0;
+	background-color: rgba(2, 2, 2, 1);
+	font-family: sans-serif;
+	color: white;
+}
+
+* {
+        box-sizing: border-box;
+	border-collapse: collapse;
+}
+
+#content {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	overflow-x: hidden;
+}
+
+#input, #error {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+}
+
+#error {
+	flex-direction: column;
+}
+#error>* {
+	margin: .3em;
+}
+
+#input {
+	background: none;
+}
+
+#input input {
+	margin: 1em;
+	padding: 7px;
+	background-color: rgba(72, 72, 72, .8);
+	border: 2px solid rgba(255, 255, 255, .15);
+	outline: none;
+	border-radius: 1vmin;
+	font-family: sans-serif;
+	color: white;
+}
+
+#spinner {
+	border-radius: 100%;
+	border: 0.5vmin solid white;
+	border-top: 0.5vmin solid transparent;
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	from { transform: rotate(90deg); }
+	to { transform: rotate(450deg); }
+}
+.hidden {
+	display: none !important;
+}
+
+::selection {
+	background-color: white;
+	color: #101020;
+}
+
+.results {
+	max-width: 100vw;
+	overflow-x: auto;
+}
+
+.results table {
+	border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+        max-width: 100vw;
+	overflow-x: scroll;
+        background-color: #fff;
+        min-width: 390px;
+	color: black;
+}
+
+.results tbody tr {
+        border-top: 1px solid #ccc;
+}
+.results tr {
+        background-color: #fff;
+        margin: 0 0 15px 0;
+}
+
+.results td, th {
+        text-align: center;
+        overflow: hidden;
+}
+
+.results th {
+        padding: 5px 3px;
+}
+
+.results thead th {
+        background-color: #eee;
+}
+
+.results table span {
+	white-space: nowrap;
+        padding: 5px 3px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        text-decoration: none;
+        color: black;
+}
+.results thead>tr {
+        border-bottom: 2px solid #ccc;
+}
+
+.results tbody:not(:last-child) {
+        border-bottom: 1px solid rgba(0, 0, 0, .2);
+}
+
+.results tbody tr:hover {
+        background-color: #ddd;
+}
+
+.results tbody tr:hover td {
+        background-color: transparent;
+}
+
+@media (min-width: 1000px) {
+        .results td p {
+                display: inline;
+                margin-right: 5px;
+        }
+
+        .results th {
+                padding: 10px 5px;
+        }
+
+        .results table a {
+                padding: 10px 5px;
+        }
+
+        .results table {
+                border: none;
+        }
+
+	#input input {
+		width: 60vw;
+		max-width: 600px;
+	}
+	#spinner {
+		width: 10vmin;
+		height: 10vmin;
+	}
+
+}
+
+@media (max-width: 999px) {
+	#input input {
+		font-size: 3vmin;
+		width: 95vw;
+	}
+	#spinner {
+		width: 20vmin;
+		height: 20vmin;
+	}
+}
+
