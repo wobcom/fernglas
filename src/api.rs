@@ -11,7 +11,10 @@ use std::convert::Infallible;
 async fn query<T: Table>(State(table): State<T>, AxumQuery(query): AxumQuery<Query>) -> impl IntoResponse {
     println!("request: {}", serde_json::to_string_pretty(&query).unwrap());
     let stream = table.get_routes(query)
-        .map(|route| Ok::<_, Infallible>(serde_json::to_string(&route).unwrap()));
+        .map(|route| {
+            let json = serde_json::to_string(&route).unwrap();
+             Ok::<_, Infallible>(format!("{}\n", json))
+        });
     StreamBody::new(stream)
 }
 
