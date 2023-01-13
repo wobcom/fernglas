@@ -17,6 +17,7 @@ const resultsTemplate = (query, results, done) => html`
 					<th>Large Communities</th>
 					<th>Origin</th>
 					<th>MED</th>
+					<th>Local Pref</th>
 					<th>Nexthop</th>
 					<th>Status</th>
 				</tr>
@@ -31,6 +32,7 @@ const resultsTemplate = (query, results, done) => html`
 						<td><span>${(result.large_communities || []).map(community => `(${community.join(",")})`).join(" ")}</span></td>
 						<td><span>${result.origin}</span></td>
 						<td><span>${result.med}</span></td>
+						<td><span>${result.local_pref}</span></td>
 						<td><span>${result.nexthop}</span></td>
 						<td><span>${result.status}</span></td>
 					</tr>

@@ -19,6 +19,7 @@ pub struct RouteAttrs {
     pub communities: Option<Vec<(u16, u16)>>,
     pub large_communities: Option<Vec<(u32, u32, u32)>>,
     pub med: Option<u32>,
+    pub local_pref: Option<u32>,
     pub nexthop: Option<IpAddr>,
 }
 

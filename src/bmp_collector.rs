@@ -7,6 +7,7 @@ use zettabgp::prelude::BgpAddrs;
 use zettabgp::prelude::BgpAttrOrigin;
 use zettabgp::prelude::BgpOrigin;
 use zettabgp::prelude::BgpMED;
+use zettabgp::prelude::BgpLocalpref;
 use zettabgp::prelude::BgpASpath;
 use zettabgp::prelude::BgpNextHop;
 use zettabgp::prelude::BgpLargeCommunityList;
@@ -117,6 +118,9 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
                             }
                             BgpAttrItem::MED(BgpMED { value }) => {
                                 attrs.med = Some(value);
+                            }
+                            BgpAttrItem::LocalPref(BgpLocalpref { value }) => {
+                                attrs.local_pref = Some(value);
                             }
                             BgpAttrItem::Origin(BgpOrigin { value }) => {
                                 attrs.origin = Some(match value {
