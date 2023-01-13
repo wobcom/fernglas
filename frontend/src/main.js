@@ -1,7 +1,6 @@
 import { route, go, start } from './router.js';
 import { historyView } from './historyView.js';
 import { resultsView } from './resultsView.js';
-import { showAlertModal } from './overlays.js';
 import { hideDiv } from './helpers.js';
 
 (async () => {
