@@ -43,8 +43,8 @@ const resultsTemplate = (query, results, done) => html`
 	</div>
 `;
 
-const errorTemplate = (data) => html`
-	${searchTemplate()}
+const errorTemplate = (query, data) => html`
+	${searchTemplate(query)}
 	<div id="error">
 		<h1 id="error-text">${data.text}</h1>
 		<sub id="error-descr">${data.description}</sub>
@@ -52,6 +52,8 @@ const errorTemplate = (data) => html`
 `;
 
 const processResults = (results) => {
+
+	// stage 1, combine pre- and post-policy adj-in tables
 	// start out with PostPolicy
 	const preAndPostPolicy = {};
 	const preAndPostPolicyKey = route => `${route.from_client}:${route.remote_router_id}:${route.net}`;
@@ -71,6 +73,8 @@ const processResults = (results) => {
 			}
 		}
 	}
+
+	// stage 2, combine adj-in and loc-rib
 	const all = {};
 	const allKey = route => `${route.from_client}:${route.net}:${JSON.stringify(route.as_path)}:${JSON.stringify(route.large_communities)}:${route.nexthop}`;
 	for (let route of Object.values(preAndPostPolicy)) {
@@ -99,14 +103,14 @@ const processResults = (results) => {
 	return newResults;
 };
 
-export const resultsView = async (query) => {
+export const resultsView = async (query, ) => {
 
 	const searchParams = {};
 	searchParams[query[0]] = `${query[1]}/${query[2]}`;
 
 	const response = await fetch("/query?" + new URLSearchParams(searchParams));
 	if (!response.ok) {
-		render(errorTemplate({
+		render(errorTemplate(query, {
 			text: "No data",
 			description: await response.text(),
 		}), document.getElementById('content'));
@@ -123,4 +127,12 @@ export const resultsView = async (query) => {
 		}
 		render(resultsTemplate(query, processResults(results), result.done), document.getElementById('content'));
 	}
+	if (results.length == 0) {
+		render(errorTemplate(query, {
+			text: "No data",
+			description: "",
+		}), document.getElementById('content'));
+	}
+
+	document.getElementById("input-field").focus();
 };

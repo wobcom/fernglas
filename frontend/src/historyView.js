@@ -8,4 +8,5 @@ const historyTemplate = () => html`
 
 export const historyView = async () => {
 	render(historyTemplate(), document.getElementById('content'));
+	document.getElementById("input-field").focus();
 };

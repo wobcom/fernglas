@@ -38,16 +38,30 @@ body {
 #input {
 	background: none;
 }
+#input input#input-field {
+	flex-grow: 1;
+}
 
-#input input {
-	margin: 1em;
+#input>* {
+	margin: 1em 0;
 	padding: 7px;
 	background-color: rgba(72, 72, 72, .8);
 	border: 2px solid rgba(255, 255, 255, .15);
+	border-left: none;
 	outline: none;
-	border-radius: 1vmin;
 	font-family: sans-serif;
 	color: white;
+}
+
+#input input[type="submit"] {
+	cursor: pointer;
+}
+#input>*:first-child {
+	border-left: 2px solid rgba(255, 255, 255, .15);
+	border-radius: 1vmin 0 0 1vmin;
+}
+#input>*:last-child {
+	border-radius: 0 1vmin 1vmin 0;
 }
 
 #spinner {
@@ -149,7 +163,7 @@ body {
                 border: none;
         }
 
-	#input input {
+	#input {
 		width: 60vw;
 		max-width: 600px;
 	}
@@ -161,9 +175,12 @@ body {
 }
 
 @media (max-width: 999px) {
-	#input input {
-		font-size: 3vmin;
+	#input {
+		flex-wrap: wrap;
 		width: 95vw;
+	}
+	#input>* {
+		font-size: 3vmin;
 	}
 	#spinner {
 		width: 20vmin;
