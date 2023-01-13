@@ -22,13 +22,13 @@ body {
 	overflow-x: hidden;
 }
 
-#input, #error {
+#input, #error, #loading {
 	display: flex;
 	justify-content: center;
 	align-items: center;
 }
 
-#error {
+#error, #loading {
 	flex-direction: column;
 }
 #error>* {
@@ -64,7 +64,10 @@ body {
 	border-radius: 0 1vmin 1vmin 0;
 }
 
-#spinner {
+#loading {
+	margin: 15px 0;
+}
+.spinner {
 	border-radius: 100%;
 	border: 0.5vmin solid white;
 	border-top: 0.5vmin solid transparent;
@@ -167,7 +170,7 @@ body {
 		width: 60vw;
 		max-width: 600px;
 	}
-	#spinner {
+	.spinner {
 		width: 10vmin;
 		height: 10vmin;
 	}
@@ -182,7 +185,7 @@ body {
 	#input>* {
 		font-size: 3vmin;
 	}
-	#spinner {
+	.spinner {
 		width: 20vmin;
 		height: 20vmin;
 	}

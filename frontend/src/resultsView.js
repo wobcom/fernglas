@@ -7,39 +7,45 @@ const resultsTemplate = (query, results, done) => html`
 	${searchTemplate(query)}
 
 	<div class="results">
-		<table>
-			<thead>
-				<tr>
-					<th>Router</th>
-					<th>Peer</th>
-					<th>Prefix</th>
-					<th>AS Path</th>
-					<th>Large Communities</th>
-					<th>Origin</th>
-					<th>MED</th>
-					<th>Local Pref</th>
-					<th>Nexthop</th>
-					<th>Status</th>
-				</tr>
-			</thead>
-			<tbody>
-				${results.map(result => html`
+		${results.length > 0 ? html`
+			<table>
+				<thead>
 					<tr>
-						<td><span>${result.from_client}</span></td>
-						<td><span>${result.remote_router_id}</span></td>
-						<td><span>${result.net}</span></td>
-						<td><span>${result.as_path.join(" ")}</span></td>
-						<td><span>${(result.large_communities || []).map(community => `(${community.join(",")})`).join(" ")}</span></td>
-						<td><span>${result.origin}</span></td>
-						<td><span>${result.med}</span></td>
-						<td><span>${result.local_pref}</span></td>
-						<td><span>${result.nexthop}</span></td>
-						<td><span>${result.status}</span></td>
+						<th>Router</th>
+						<th>Peer</th>
+						<th>Prefix</th>
+						<th>AS Path</th>
+						<th>Large Communities</th>
+						<th>Origin</th>
+						<th>MED</th>
+						<th>Local Pref</th>
+						<th>Nexthop</th>
+						<th>Status</th>
 					</tr>
-				`)}
-				${!done ? html`<tr><td>Loading...</td></tr>` : ''}
-			</tbody>
-		</table>
+				</thead>
+				<tbody>
+					${results.map(result => html`
+						<tr>
+							<td><span>${result.from_client}</span></td>
+							<td><span>${result.remote_router_id}</span></td>
+							<td><span>${result.net}</span></td>
+							<td><span>${result.as_path.join(" ")}</span></td>
+							<td><span>${(result.large_communities || []).map(community => `(${community.join(",")})`).join(" ")}</span></td>
+							<td><span>${result.origin}</span></td>
+							<td><span>${result.med}</span></td>
+							<td><span>${result.local_pref}</span></td>
+							<td><span>${result.nexthop}</span></td>
+							<td><span>${result.status}</span></td>
+						</tr>
+					`)}
+				</tbody>
+			</table>
+		` : ''}
+	</div>
+	<div id="loading">
+		${!done ? html`
+			<div class="spinner"></div>
+		` : ''}
 	</div>
 `;
 
@@ -107,11 +113,10 @@ export const resultsView = async (query) => {
 
 	const [ mode, ip, prefixLength, optionsString ] = query;
 
-	console.log(query)
-
 	const searchParams = new URLSearchParams(optionsString);
 	searchParams.append(mode, `${ip}/${prefixLength}`);
 
+	render(resultsTemplate(query, [], false), document.getElementById('content'));
 	const response = await fetch("/query?" + searchParams);
 	if (!response.ok) {
 		render(errorTemplate(query, {
