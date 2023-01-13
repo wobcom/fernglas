@@ -9,7 +9,7 @@ import { hideDiv } from './helpers.js';
 	//await initSettings();
 
 	route(/^\/$/, historyView);
-	route(/^\/([^\/]+)\/([^\/]+)\/([^\/]+)$/, resultsView);
+	route(/^\/([^\/]+)\/([^\/]+)\/([^\/?]+)(\?.*)?$/, resultsView);
 
 	document.getElementById('loader-overlay').innerHTML = '';
 	hideDiv('loader-overlay');

@@ -103,12 +103,16 @@ const processResults = (results) => {
 	return newResults;
 };
 
-export const resultsView = async (query, ) => {
+export const resultsView = async (query) => {
 
-	const searchParams = {};
-	searchParams[query[0]] = `${query[1]}/${query[2]}`;
+	const [ mode, ip, prefixLength, optionsString ] = query;
 
-	const response = await fetch("/query?" + new URLSearchParams(searchParams));
+	console.log(query)
+
+	const searchParams = new URLSearchParams(optionsString);
+	searchParams.append(mode, `${ip}/${prefixLength}`);
+
+	const response = await fetch("/query?" + searchParams);
 	if (!response.ok) {
 		render(errorTemplate(query, {
 			text: "No data",
