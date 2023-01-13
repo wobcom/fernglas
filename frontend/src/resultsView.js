@@ -121,6 +121,6 @@ export const resultsView = async (query) => {
 		if (result.value) {
 			results.push(result.value);
 		}
-		render(resultsTemplate(`${query[1]}/${query[2]}`, processResults(results), result.done), document.getElementById('content'));
+		render(resultsTemplate(query, processResults(results), result.done), document.getElementById('content'));
 	}
 };
