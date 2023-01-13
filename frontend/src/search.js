@@ -19,6 +19,6 @@ const formSubmit = (e) => {
 
 export const searchTemplate = (query) => html`
 	<form id="input" @submit=${formSubmit}>
-		<input name="input-field" id="input-field" type="text" spellcheck=false" autocomplete="new-password" autocorrect="off" autocapitalize="off" value=${`${query[1]}/${query[2]}`} />
+		<input name="input-field" id="input-field" type="text" spellcheck=false" autocomplete="new-password" autocorrect="off" autocapitalize="off" value=${query ? `${query[1]}/${query[2]}` : ''} />
 	</form>
 `;
