@@ -531,6 +531,18 @@ call-bind@^1.0.0:
     function-bind "^1.1.1"
     get-intrinsic "^1.0.2"
 
+can-namespace@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/can-namespace/-/can-namespace-1.0.0.tgz#0b8fafafbb11352b9ead4222ffe3822405b43e99"
+  integrity sha512-1sBY/SLwwcmxz3NhyVhLjt2uD/dZ7V1mII82/MIXSDn5QXnslnosJnjlP8+yTx2uTCRvw1jlFDElRs4pX7AG5w==
+
+can-ndjson-stream@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/can-ndjson-stream/-/can-ndjson-stream-1.0.2.tgz#6a8131f9c8c697215163b3fe49a0c02e4439cb47"
+  integrity sha512-//tM8wcTV42SyD1JGua7WMVftZEeTwapcHJTTe3vJwuVywXD01CJbdEkgwRYjy2evIByVJV21ZKBdSv5ygIw1w==
+  dependencies:
+    can-namespace "^1.0.0"
+
 caniuse-lite@^1.0.30001400:
   version "1.0.30001443"
   resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001443.tgz#8fc85f912d5471c9821acacf9e715c421ca0dd1f"

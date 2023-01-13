@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "can-ndjson-stream": "^1.0.2",
     "copy-webpack-plugin": "^11.0.0",
     "lit-html": "^2.6.1",
     "webpack": "^5.75.0"
