@@ -117,7 +117,7 @@ export const resultsView = async (query) => {
 	searchParams.append(mode, `${ip}/${prefixLength}`);
 
 	render(resultsTemplate(query, [], false), document.getElementById('content'));
-	const response = await fetch("/query?" + searchParams);
+	const response = await fetch("/api/query?" + searchParams);
 	if (!response.ok) {
 		render(errorTemplate(query, {
 			text: "No data",

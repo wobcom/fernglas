@@ -36,7 +36,7 @@ pub fn start_api_server_in_new_thread<T: Table>(table: T) {
                 .unwrap();
             rt.block_on(async move {
                 let server = axum::Server::bind(&"[::]:3000".parse().unwrap())
-                    .serve(make_api(table).into_make_service());
+                    .serve(Router::new().nest("/api", make_api(table)).into_make_service());
 
                 if let Err(e) = server.await {
                     eprintln!("server error: {}", e);
