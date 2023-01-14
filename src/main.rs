@@ -4,7 +4,7 @@ mod bmp_collector;
 mod api;
 
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
 
     let table: table_impl::InMemoryTable = Default::default();

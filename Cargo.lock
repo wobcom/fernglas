@@ -652,6 +652,7 @@ dependencies = [
  "autocfg",
  "libc",
  "mio",
+ "num_cpus",
  "pin-project-lite",
  "socket2",
  "tokio-macros",
