@@ -1,6 +1,6 @@
 use std::pin::Pin;
 use futures_util::Stream;
-use std::net::{Ipv4Addr, IpAddr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use ipnet::IpNet;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ pub struct RouteAttrs {
 #[serde(deny_unknown_fields)]
 pub struct SessionId {
     pub from_client: SocketAddr,
-    pub remote_router_id: Ipv4Addr,
+    pub peer_address: IpAddr,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]

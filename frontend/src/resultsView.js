@@ -27,7 +27,7 @@ const resultsTemplate = (query, results, done) => html`
 					${results.map(result => html`
 						<tr>
 							<td><span>${result.from_client}</span></td>
-							<td><span>${result.remote_router_id}</span></td>
+							<td><span>${result.peer_address}</span></td>
 							<td><span>${result.net}</span></td>
 							<td><span>${result.as_path.join(" ")}</span></td>
 							<td><span>${(result.large_communities || []).map(community => `(${community.join(",")})`).join(" ")}</span></td>
@@ -62,7 +62,7 @@ const processResults = (results) => {
 	// stage 1, combine pre- and post-policy adj-in tables
 	// start out with PostPolicy
 	const preAndPostPolicy = {};
-	const preAndPostPolicyKey = route => `${route.from_client}:${route.remote_router_id}:${route.net}`;
+	const preAndPostPolicyKey = route => `${route.from_client}:${route.peer_address}:${route.net}`;
 	for (let route of results) {
 		if (route.table === "PostPolicyAdjIn") {
 			route.status = "Accepted";

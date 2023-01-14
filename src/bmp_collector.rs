@@ -48,11 +48,11 @@ fn table_selector_for_peer(client_addr: SocketAddr, peer: &BmpMessagePeerHeader)
     match (peer.peertype, peer.flags.view_bits::<Msb0>()[7]) {
         (0, false) => Some(TableSelector::PrePolicyAdjIn(SessionId {
             from_client: client_addr,
-            remote_router_id: peer.routerid,
+            peer_address: peer.peeraddress,
         })),
         (0, true) => Some(TableSelector::PostPolicyAdjIn(SessionId {
             from_client: client_addr,
-            remote_router_id: peer.routerid,
+            peer_address: peer.peeraddress,
         })),
         (3, _) => Some(TableSelector::LocRib { from_client: client_addr }),
         _ => None,
