@@ -1,6 +1,8 @@
 mod table;
 mod table_impl;
 mod bmp_collector;
+mod bgpdumper;
+mod bgp_collector;
 mod api;
 
 
@@ -11,6 +13,9 @@ async fn main() -> anyhow::Result<()> {
 
     api::start_api_server_in_new_thread(table.clone());
 
-    bmp_collector::run(table).await
+    tokio::select! {
+        val = bmp_collector::run(table.clone()) => val,
+        val = bgp_collector::run(table) => val,
+    }
 }
 

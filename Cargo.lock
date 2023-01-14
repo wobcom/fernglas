@@ -18,6 +18,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2cb2f989d18dd141ab8ae82f64d1a8cdd37e0840f73a406896cf5e99502fab61"
 
 [[package]]
+name = "async-stream"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dad5c83079eae9969be7fadefe640a1c566901f05ff91ab221de4b6f68d9507e"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "10f203db73a71dfa2fb6dd22763990fa26f3d2625a6da2da900d23b87d26be27"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -182,9 +203,11 @@ name = "fernglas"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-stream",
  "async-trait",
  "axum",
  "bitvec",
+ "bytes",
  "futures-util",
  "ipnet",
  "patricia_tree",
@@ -650,7 +673,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eab6d665857cc6ca78d6e80303a02cea7a7851e85dfbd77cbdc09bd129f1ef46"
 dependencies = [
  "autocfg",
+ "bytes",
  "libc",
+ "memchr",
  "mio",
  "num_cpus",
  "pin-project-lite",
@@ -911,7 +936,7 @@ dependencies = [
 [[package]]
 name = "zettabgp"
 version = "0.3.0"
-source = "git+https://github.com/wobcom/zettabgp#ba7d6bfe2a1977cbcd43fe4ffd2a188fcfd549eb"
+source = "git+https://github.com/wobcom/zettabgp#0b696d9fcf0ad09795ee9b9ca5f1df303742082d"
 dependencies = [
  "serde",
 ]
