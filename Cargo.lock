@@ -911,7 +911,7 @@ dependencies = [
 [[package]]
 name = "zettabgp"
 version = "0.3.0"
-source = "git+https://github.com/wobcom/zettabgp#0247d7531e323b17c11ac2ea860860820afefb18"
+source = "git+https://github.com/wobcom/zettabgp#ba7d6bfe2a1977cbcd43fe4ffd2a188fcfd549eb"
 dependencies = [
  "serde",
 ]
