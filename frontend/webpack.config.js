@@ -15,7 +15,7 @@ module.exports = {
   devServer: {
     static: dist,
     proxy: {
-      "/query": {
+      "/api/": {
         target: 'http://localhost:3000'
       }
     },
