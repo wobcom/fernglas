@@ -19,7 +19,6 @@ use zettabgp::prelude::BgpAddr;
 use zettabgp::bmp::BmpMessage;
 use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
 use zettabgp::bmp::prelude::BmpMessagePeerHeader;
-use zettabgp::bmp::prelude::BmpMessagePeerUp;
 use zettabgp::prelude::BgpAttrItem;
 use crate::table::{Table, TableSelector, RouteAttrs, RouteOrigin, SessionId};
 
@@ -184,9 +183,28 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
                     BmpMessage::RouteMonitoring(rm) => {
                         process_route_monitoring(&table, client_addr, rm).await;
                     }
+                    BmpMessage::PeerUpNotification(n) => {
+                        println!("{} {:#?}", client_addr, n);
+                    }
+                    BmpMessage::PeerDownNotification(n) => {
+                        let session = match table_selector_for_peer(client_addr, &n.peer) {
+                            Some(TableSelector::PrePolicyAdjIn(session)) => session,
+                            _ => {
+                                eprintln!("could not process peer down for peer type {} flags {:x}", n.peer.peertype, n.peer.flags);
+                                continue;
+                            }
+                        };
+                        table.clear_peer_table(session).await;
+                    }
+                    BmpMessage::Termination(n) => {
+                        println!("{} {:#?}", client_addr, n);
+                        break;
+                    }
                     msg => println!("{} {:#?}", client_addr, msg),
                 }
             }
+
+            table.clear_router_table(client_addr).await;
         });
 
     }
