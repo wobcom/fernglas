@@ -7,9 +7,11 @@ use std::net::SocketAddr;
 use zettabgp::BgpSessionParams;
 use zettabgp::BgpCapability;
 use zettabgp::BgpTransportMode;
+use zettabgp::prelude::BgpNotificationMessage;
 use crate::table::{Table, TableSelector};
+use log::*;
 
-pub async fn run_peer(cfg: Config, table: impl Table, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<()> {
+pub async fn run_peer(cfg: Config, table: impl Table, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<BgpNotificationMessage> {
     let mut dumper = BgpDumper::new(
         BgpSessionParams::new(
             cfg.source_asn,
@@ -27,19 +29,14 @@ pub async fn run_peer(cfg: Config, table: impl Table, stream: TcpStream, client_
         ),
         stream,
     );
-    if let Err(e) = dumper.start_active().await {
-        anyhow::bail!("{}", e);
-    }
+    dumper.start_active().await?;
     let stream = dumper.lifecycle();
     pin_mut!(stream);
     loop {
         let update = match stream.next().await {
             Some(Ok(update)) => update,
-            Some(Err(Ok(notification))) => {
-                println!("notification {:?}", notification);
-                break Ok(());
-            },
-            Some(Err(Err(e))) => anyhow::bail!("{}", e),
+            Some(Err(Ok(notification))) => break Ok(notification),
+            Some(Err(Err(e))) => anyhow::bail!(e),
             None => panic!(),
         };
         table.insert_bgp_update(TableSelector::LocRib { from_client: client_addr }, update).await;
@@ -58,14 +55,13 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
     let listener = TcpListener::bind("[::]:179").await?;
     loop {
         let (io, client_addr) = listener.accept().await?;
-        eprintln!("connected {:?}", client_addr);
+        info!("connected {:?}", client_addr);
 
         let table = table.clone();
         let cfg = cfg.clone();
         tokio::spawn(async move {
-            if let Err(e) = run_peer(cfg.clone(), table.clone(), io, client_addr).await {
-                println!("bgp session error: {}", e);
-            }
+            let res = run_peer(cfg.clone(), table.clone(), io, client_addr).await;
+            info!("disconected {} {:?}", client_addr, res);
             table.clear_router_table(client_addr).await;
         });
     }

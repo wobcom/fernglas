@@ -7,12 +7,13 @@ use futures_util::StreamExt;
 use tokio::sync::oneshot;
 use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 use tokio_util::codec::FramedRead;
 use tokio_util::codec::LengthDelimitedCodec;
-use tokio::sync::Mutex;
 use std::sync::Arc;
 use zettabgp::prelude::*;
-use tokio::io::AsyncWriteExt;
+use log::*;
 
 pub struct BgpDumper {
     pub params: BgpSessionParams,
@@ -72,7 +73,7 @@ impl BgpDumper {
             buf[18] = 4; //keepalive
             loop {
                 if write.lock().await.write_all(&buf).await.is_err() {
-                    eprintln!("error sending keepalive");
+                    warn!("error sending keepalive");
                 }
                 tokio::select! {
                     _ = tokio::time::sleep(slp) => {},
@@ -111,8 +112,8 @@ impl BgpDumper {
                     BgpMessageType::Update => {
                         let mut msgupdate = BgpUpdateMessage::new();
                         if let Err(e) = msgupdate.decode_from(&self.params, &buf[..]) {
-                            eprintln!("BGP update decode error: {:?}", e);
-                            eprintln!("{:x?}", &buf[..]);
+                            warn!("BGP update decode error: {:?}", e);
+                            warn!("{:x?}", &buf[..]);
                             continue;
                         }
                         yield msgupdate;

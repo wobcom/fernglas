@@ -8,6 +8,7 @@ mod api;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::init();
 
     let table: table_impl::InMemoryTable = Default::default();
 

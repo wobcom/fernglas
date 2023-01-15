@@ -4,6 +4,7 @@ use std::net::{IpAddr, SocketAddr};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use log::*;
 
 #[derive(Debug, Clone, Serialize)]
 pub enum RouteOrigin {
@@ -178,7 +179,7 @@ fn bgp_addrs_to_nets(addrs: &zettabgp::prelude::BgpAddrs) -> Vec<IpNet> {
             for addr in addrs {
                 match Ipv4Net::new(addr.addr, addr.prefixlen) {
                     Ok(net) => res.push(IpNet::V4(net)),
-                    Err(_) => eprintln!("invalid BgpAddrs prefixlen"),
+                    Err(_) => warn!("invalid BgpAddrs prefixlen"),
                 }
             }
         }

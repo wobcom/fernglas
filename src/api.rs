@@ -7,9 +7,10 @@ use crate::table::Query;
 use crate::table::Table;
 use futures_util::StreamExt;
 use std::convert::Infallible;
+use log::*;
 
 async fn query<T: Table>(State(table): State<T>, AxumQuery(query): AxumQuery<Query>) -> impl IntoResponse {
-    println!("request: {}", serde_json::to_string_pretty(&query).unwrap());
+    trace!("request: {}", serde_json::to_string_pretty(&query).unwrap());
     let stream = table.get_routes(query)
         .map(|route| {
             let json = serde_json::to_string(&route).unwrap();
@@ -39,11 +40,11 @@ pub fn start_api_server_in_new_thread<T: Table>(table: T) {
                     .serve(Router::new().nest("/api", make_api(table)).into_make_service());
 
                 if let Err(e) = server.await {
-                    eprintln!("server error: {}", e);
+                    warn!("server error: {}", e);
                 }
             });
 
-            eprintln!("Restarting server after error");
+            info!("Restarting server after error");
         }
 
     });
