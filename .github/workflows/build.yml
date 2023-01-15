@@ -1,0 +1,35 @@
+name: "Build"
+on:
+  pull_request:
+  push:
+jobs:
+  fernglas:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3.3.0
+    - uses: cachix/install-nix-action@v18
+    - uses: cachix/cachix-action@v12
+      with:
+        name: wobcom-public
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - run: nix build .#pkgsStatic.fernglas -v
+    - uses: actions/upload-artifact@v3
+      with:
+        name: fernglas
+        path: result/bin/fernglas
+  fernglas-frontend:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3.3.0
+    - uses: cachix/install-nix-action@v18
+    - uses: cachix/cachix-action@v12
+      with:
+        name: wobcom-public
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - run: nix build .#fernglas-frontend -v
+    # https://github.com/actions/upload-artifact/issues/92
+    - run: cp -r result/ result-frontend
+    - uses: actions/upload-artifact@v3
+      with:
+        name: fernglas-frontend
+        path: result-frontend/*

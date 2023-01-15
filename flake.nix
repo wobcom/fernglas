@@ -86,5 +86,6 @@
       inherit (pkgs) fernglas fernglas-frontend;
       default = packages.fernglas;
     };
+    legacyPackages = pkgs;
   });
 }
