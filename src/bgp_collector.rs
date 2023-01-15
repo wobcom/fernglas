@@ -1,28 +1,31 @@
 use futures_util::StreamExt;
 use futures_util::pin_mut;
 use tokio::net::TcpListener;
-use crate::bgpdumper::BgpDumper;
 use tokio::net::TcpStream;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use zettabgp::BgpSessionParams;
 use zettabgp::BgpCapability;
 use zettabgp::BgpTransportMode;
 use zettabgp::prelude::BgpNotificationMessage;
+use crate::bgpdumper::BgpDumper;
 use crate::table::{Table, TableSelector};
+use serde::Deserialize;
 use log::*;
 
-pub async fn run_peer(cfg: Config, table: impl Table, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<BgpNotificationMessage> {
+pub async fn run_peer(cfg: BgpCollectorConfig, table: impl Table, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<BgpNotificationMessage> {
     let mut dumper = BgpDumper::new(
         BgpSessionParams::new(
-            cfg.source_asn,
+            cfg.asn,
             180,
             BgpTransportMode::IPv4,
-            std::net::Ipv4Addr::new(1, 0, 0, 0),
+            cfg.router_id,
             vec![
                 BgpCapability::SafiIPv4u,
                 BgpCapability::SafiIPv6u,
                 BgpCapability::CapRR,
-                BgpCapability::CapASN32(cfg.source_asn),
+//use zettabgp::BgpCapAddPath;
+                //BgpCapability::CapAddPath(vec![BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv4u, true, true).unwrap()/*, BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv6u, true, true).unwrap()*/]),
+                BgpCapability::CapASN32(cfg.asn),
             ]
             .into_iter()
             .collect(),
@@ -43,16 +46,15 @@ pub async fn run_peer(cfg: Config, table: impl Table, stream: TcpStream, client_
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub source_asn: u32,
+#[derive(Debug, Clone, Deserialize)]
+pub struct BgpCollectorConfig {
+    pub asn: u32,
+    pub router_id: Ipv4Addr,
+    pub bind: SocketAddr,
 }
 
-pub async fn run(table: impl Table) -> anyhow::Result<()> {
-    let cfg = Config {
-        source_asn: 64519,
-    };
-    let listener = TcpListener::bind("[::]:179").await?;
+pub async fn run(cfg: BgpCollectorConfig, table: impl Table) -> anyhow::Result<()> {
+    let listener = TcpListener::bind(cfg.bind).await?;
     loop {
         let (io, client_addr) = listener.accept().await?;
         info!("connected {:?}", client_addr);

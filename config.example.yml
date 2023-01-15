@@ -1,0 +1,6 @@
+api:
+  bind: "[::]:3000"
+
+collectors:
+  - collector_type: Bmp
+    bind: "[::]:11019"

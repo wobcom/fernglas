@@ -9,6 +9,7 @@ use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
 use zettabgp::bmp::prelude::BmpMessagePeerHeader;
 use zettabgp::bmp::prelude::BmpMessageTermination;
 use crate::table::{Table, TableSelector, SessionId};
+use serde::Deserialize;
 use log::*;
 
 fn table_selector_for_peer(client_addr: SocketAddr, peer: &BmpMessagePeerHeader) -> Option<TableSelector> {
@@ -86,8 +87,13 @@ pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Tab
     }
 }
 
-pub async fn run(table: impl Table) -> anyhow::Result<()> {
-    let listener = TcpListener::bind("[::]:11019").await?;
+#[derive(Debug, Clone, Deserialize)]
+pub struct BmpCollectorConfig {
+    pub bind: SocketAddr,
+}
+
+pub async fn run(cfg: BmpCollectorConfig, table: impl Table) -> anyhow::Result<()> {
+    let listener = TcpListener::bind(cfg.bind).await?;
     loop {
         let (io, client_addr) = listener.accept().await?;
         info!("connected {:?}", client_addr);

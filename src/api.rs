@@ -7,7 +7,14 @@ use crate::table::Query;
 use crate::table::Table;
 use futures_util::StreamExt;
 use std::convert::Infallible;
+use std::net::SocketAddr;
+use serde::Deserialize;
 use log::*;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ApiServerConfig {
+    bind: SocketAddr,
+}
 
 async fn query<T: Table>(State(table): State<T>, AxumQuery(query): AxumQuery<Query>) -> impl IntoResponse {
     trace!("request: {}", serde_json::to_string_pretty(&query).unwrap());
@@ -25,27 +32,13 @@ fn make_api<T: Table>(table: T) -> Router {
         .with_state(table)
 }
 
-pub fn start_api_server_in_new_thread<T: Table>(table: T) {
+pub async fn run_api_server<T: Table>(cfg: ApiServerConfig, table: T) -> anyhow::Result<()> {
+    let make_service = Router::new()
+        .nest("/api", make_api(table))
+        .into_make_service();
 
-    std::thread::spawn(move || {
+    axum::Server::bind(&cfg.bind)
+        .serve(make_service).await?;
 
-        loop {
-            let table = table.clone();
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async move {
-                let server = axum::Server::bind(&"[::]:3000".parse().unwrap())
-                    .serve(Router::new().nest("/api", make_api(table)).into_make_service());
-
-                if let Err(e) = server.await {
-                    warn!("server error: {}", e);
-                }
-            });
-
-            info!("Restarting server after error");
-        }
-
-    });
+    Ok(())
 }
