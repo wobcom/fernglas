@@ -3,10 +3,11 @@ use bitvec::view::BitView;
 use bitvec::prelude::Msb0;
 use std::net::SocketAddr;
 use tokio_util::codec::length_delimited::LengthDelimitedCodec;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use zettabgp::bmp::BmpMessage;
 use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
 use zettabgp::bmp::prelude::BmpMessagePeerHeader;
+use zettabgp::bmp::prelude::BmpMessageTermination;
 use crate::table::{Table, TableSelector, SessionId};
 use log::*;
 
@@ -37,6 +38,54 @@ async fn process_route_monitoring(table: &impl Table, client_addr: SocketAddr, r
     table.insert_bgp_update(session, rm.update).await;
 }
 
+pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Table) -> anyhow::Result<BmpMessageTermination> {
+    let mut read = LengthDelimitedCodec::builder()
+        .length_field_offset(1)
+        .length_field_type::<u32>()
+        .num_skip(0)
+        .new_read(io);
+    loop {
+        let msg = read.next().await.ok_or(anyhow::anyhow!("unexpected end of stream"))?;
+        let orig_msg = match msg {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("BMP Codec Error: {:?}", e);
+                continue;
+            }
+        };
+        let msg = match BmpMessage::decode_from(&orig_msg[5..]) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("BMP Parse Error: {:?}", e);
+                warn!("{:x?}", &orig_msg);
+                continue;
+            }
+        };
+
+        match msg {
+            BmpMessage::RouteMonitoring(rm) => {
+                process_route_monitoring(table, client_addr, rm).await;
+            }
+            BmpMessage::PeerUpNotification(n) => {
+                trace!("{} {:?}", client_addr, n);
+            }
+            BmpMessage::PeerDownNotification(n) => {
+                trace!("{} {:?}", client_addr, n);
+                let session = match table_selector_for_peer(client_addr, &n.peer) {
+                    Some(TableSelector::PrePolicyAdjIn(session)) => session,
+                    _ => {
+                        warn!("could not process peer down for peer type {} flags {:x}", n.peer.peertype, n.peer.flags);
+                        continue;
+                    }
+                };
+                table.clear_peer_table(session).await;
+            }
+            BmpMessage::Termination(n) => break Ok(n),
+            msg => trace!("unknown message from {} {:#?}", client_addr, msg),
+        }
+    }
+}
+
 pub async fn run(table: impl Table) -> anyhow::Result<()> {
     let listener = TcpListener::bind("[::]:11019").await?;
     loop {
@@ -45,56 +94,10 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
 
         let table = table.clone();
         tokio::spawn(async move {
-            let mut read = LengthDelimitedCodec::builder()
-                .length_field_offset(1)
-                .length_field_type::<u32>()
-                .num_skip(0)
-                .new_read(io);
-            let mut termination_msg = None;
-            while let Some(msg) = read.next().await {
-                let orig_msg = match msg {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("BMP Codec Error: {:?}", e);
-                        continue;
-                    }
-                };
-                let msg = match BmpMessage::decode_from(&orig_msg[5..]) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("BMP Parse Error: {:?}", e);
-                        warn!("{:x?}", &orig_msg);
-                        continue;
-                    }
-                };
-
-                match msg {
-                    BmpMessage::RouteMonitoring(rm) => {
-                        process_route_monitoring(&table, client_addr, rm).await;
-                    }
-                    BmpMessage::PeerUpNotification(n) => {
-                        trace!("{} {:?}", client_addr, n);
-                    }
-                    BmpMessage::PeerDownNotification(n) => {
-                        trace!("{} {:?}", client_addr, n);
-                        let session = match table_selector_for_peer(client_addr, &n.peer) {
-                            Some(TableSelector::PrePolicyAdjIn(session)) => session,
-                            _ => {
-                                warn!("could not process peer down for peer type {} flags {:x}", n.peer.peertype, n.peer.flags);
-                                continue;
-                            }
-                        };
-                        table.clear_peer_table(session).await;
-                    }
-                    BmpMessage::Termination(n) => {
-                        info!("disconnected {} {:?}", client_addr, n);
-                        termination_msg = Some(n);
-                        break;
-                    }
-                    msg => trace!("unknown message from {} {:#?}", client_addr, msg),
-                }
-            }
-            info!("disconnected {} {:?}", client_addr, termination_msg);
+            match run_client(io, client_addr, &table).await {
+                Err(e) => warn!("disconnected {} {}", client_addr, e),
+                Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
+            };
             table.clear_router_table(client_addr).await;
         });
 

@@ -60,8 +60,10 @@ pub async fn run(table: impl Table) -> anyhow::Result<()> {
         let table = table.clone();
         let cfg = cfg.clone();
         tokio::spawn(async move {
-            let res = run_peer(cfg.clone(), table.clone(), io, client_addr).await;
-            info!("disconected {} {:?}", client_addr, res);
+            match run_peer(cfg.clone(), table.clone(), io, client_addr).await {
+                Err(e) => warn!("disconnected {} {}", client_addr, e),
+                Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
+            };
             table.clear_router_table(client_addr).await;
         });
     }
