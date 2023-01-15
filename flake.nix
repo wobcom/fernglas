@@ -76,6 +76,12 @@
 
       ) { };
     };
+
+    nixConfig = {
+      extra-substituters = [ "wobcom-public.cachix.org" ];
+      extra-trusted-public-keys = [ "wobcom-public.cachix.org-1:bEm3vZ3mRNLDLMyFwPqgArvOR6vGpVtxCYLyp+r0An8=" ];
+    };
+
   } // flake-utils.lib.eachDefaultSystem (system: let
     pkgs = import nixpkgs {
       inherit system;

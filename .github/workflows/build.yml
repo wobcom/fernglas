@@ -4,6 +4,16 @@ on:
   push:
 jobs:
   fernglas:
+    strategy:
+      matrix:
+        packageset: [
+          "pkgs",
+          "pkgsStatic",
+          "pkgsCross.musl64",
+          "pkgsCross.aarch64-multiplatform",
+          "pkgsCross.aarch64-multiplatform.pkgsStatic",
+          "pkgsCross.aarch64-multiplatform-musl"
+        ]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3.3.0
@@ -12,10 +22,10 @@ jobs:
       with:
         name: wobcom-public
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: nix build .#pkgsStatic.fernglas -v
+    - run: 'nix build .#${{ matrix.packageset }}.fernglas -v'
     - uses: actions/upload-artifact@v3
       with:
-        name: fernglas
+        name: '${{ matrix.packageset }}.fernglas'
         path: result/bin/fernglas
   fernglas-frontend:
     runs-on: ubuntu-latest
