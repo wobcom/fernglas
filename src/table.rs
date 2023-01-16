@@ -65,6 +65,7 @@ pub struct Query {
     pub table_query: Option<TableQuery>,
     #[serde(flatten)]
     pub net_query: NetQuery,
+    pub limits: Option<QueryLimits>,
     #[serde(default)]
     pub as_path_regex: Option<String>,
 }
@@ -77,6 +78,21 @@ pub struct QueryResult {
     pub table: TableSelector,
     #[serde(flatten)]
     pub attrs: RouteAttrs,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryLimits {
+    pub max_results_per_table: usize,
+    pub max_results: usize,
+}
+
+impl Default for QueryLimits {
+    fn default() -> Self {
+        Self {
+            max_results_per_table: 200,
+            max_results: 500
+        }
+    }
 }
 
 #[async_trait]

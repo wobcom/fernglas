@@ -139,6 +139,10 @@ impl Table for InMemoryTable {
 
         let (tx, rx) = tokio::sync::mpsc::channel(2);
 
+        let limits = query.limits.unwrap_or_default();
+        let max_results = if limits.max_results == 0 { usize::MAX } else { limits.max_results };
+        let max_results_per_table = if limits.max_results_per_table == 0 { usize::MAX } else { limits.max_results_per_table };
+
         rayon::spawn(move || {
             match query.net_query {
                 NetQuery::Exact(net) => {
@@ -167,7 +171,7 @@ impl Table for InMemoryTable {
                         table.common_prefixes(&to_key(&net))
                             .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
                         .filter(&nets_filter_fn)
-                        .take(200)
+                        .take(max_results_per_table)
                         .collect::<Vec<_>>()
                         .into_par_iter()
                     })
@@ -180,7 +184,7 @@ impl Table for InMemoryTable {
                         table.iter_prefix(&to_key(&net))
                             .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
                         .filter(&nets_filter_fn)
-                        .take(200)
+                        .take(max_results_per_table)
                         .collect::<Vec<_>>()
                         .into_par_iter()
                     })
@@ -189,7 +193,7 @@ impl Table for InMemoryTable {
             };
         });
 
-        Box::pin(ReceiverStream::new(rx).map(|(table, net, attrs)| QueryResult { net, table, attrs }).take(500))
+        Box::pin(ReceiverStream::new(rx).map(|(table, net, attrs)| QueryResult { net, table, attrs }).take(max_results))
     }
 
     async fn clear_router_table(&self, router: SocketAddr) {
