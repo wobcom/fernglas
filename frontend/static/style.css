@@ -36,7 +36,8 @@ body {
 }
 
 #input {
-	background: none;
+	width: 100%;
+	background: #222;
 }
 #input input#input-field {
 	flex-grow: 1;
@@ -45,8 +46,8 @@ body {
 #input>* {
 	margin: 1em 0;
 	padding: 7px;
-	background-color: rgba(72, 72, 72, .8);
-	border: 2px solid rgba(255, 255, 255, .15);
+	background-color: #444;
+	border: 1px solid #666;
 	border-left: none;
 	outline: none;
 	font-family: sans-serif;
@@ -57,11 +58,12 @@ body {
 	cursor: pointer;
 }
 #input>*:first-child {
-	border-left: 2px solid rgba(255, 255, 255, .15);
-	border-radius: 1vmin 0 0 1vmin;
+	padding-left: 1em;
+	border-left: 1px solid #666;
+	border-radius: 2em 0 0 2em;
 }
 #input>*:last-child {
-	border-radius: 0 1vmin 1vmin 0;
+	border-radius: 0 2em 2em 0;
 }
 
 #loading {
@@ -82,11 +84,6 @@ body {
 	display: none !important;
 }
 
-::selection {
-	background-color: white;
-	color: #101020;
-}
-
 .results {
 	max-width: 100vw;
 	overflow-x: auto;
@@ -97,7 +94,6 @@ body {
         max-width: 100vw;
 	overflow-x: scroll;
         background-color: #fff;
-        min-width: 390px;
 	color: black;
 }
 
@@ -106,7 +102,6 @@ body {
 }
 .results tr {
         background-color: #fff;
-        margin: 0 0 15px 0;
 }
 
 .results td, th {
@@ -162,13 +157,8 @@ body {
                 padding: 10px 5px;
         }
 
-        .results table {
-                border: none;
-        }
-
-	#input {
-		width: 60vw;
-		max-width: 600px;
+	#input input#input-field {
+		max-width: 500px;
 	}
 	.spinner {
 		width: 10vmin;
@@ -179,8 +169,8 @@ body {
 
 @media (max-width: 999px) {
 	#input {
+		padding: 0 2.5vw;
 		flex-wrap: wrap;
-		width: 95vw;
 	}
 	#input>* {
 		font-size: 3vmin;
