@@ -1,0 +1,12 @@
+listeners:
+  - listener_type: Plain
+    bind: "[::]:8080"
+    service_type: LocationRouter
+    locations:
+      "/api/*path":
+        service_type: ProxyPass
+        target: "http://[::1]:3000"
+      fallback:
+        service_type: ServeDir
+        path: ./dist
+        append_index_html_on_directories: true

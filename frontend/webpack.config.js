@@ -16,7 +16,8 @@ module.exports = {
     static: dist,
     proxy: {
       "/api/": {
-        target: 'http://localhost:3000'
+        //target: 'http://localhost:3000'
+        target: 'https://lg.as9136.net'
       }
     },
   },

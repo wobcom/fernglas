@@ -2,6 +2,8 @@
   "dependencies": {
     "can-ndjson-stream": "^1.0.2",
     "copy-webpack-plugin": "^11.0.0",
+    "d3-force": "^3.0.0",
+    "force-graph": "^1.42.18",
     "lit-html": "^2.6.1",
     "webpack": "^5.75.0"
   },

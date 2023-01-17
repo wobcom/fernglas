@@ -1,11 +1,13 @@
 import { html, render } from 'lit-html';
+import { classMap } from 'lit-html/directives/class-map.js';
 import { go } from './router.js';
 import { searchTemplate } from './search.js';
 import ndjsonStream from 'can-ndjson-stream';
+import * as forceGraph from './forceGraph.js';
 
-const resultsTemplate = (query, results, done) => html`
-	${searchTemplate(query)}
+let viewMode = "graph";
 
+const tableTemplate= results => html`
 	<div class="results">
 		${results.length > 0 ? html`
 			<table>
@@ -42,6 +44,12 @@ const resultsTemplate = (query, results, done) => html`
 			</table>
 		` : ''}
 	</div>
+`;
+
+const resultsTemplate = (query, results, done) => html`
+	${searchTemplate(query)}
+	${viewMode === 'table' ? tableTemplate(results): ''}
+	<div id="graph" class=${classMap({hidden: viewMode !== 'graph'})}></div>
 	<div id="loading">
 		${!done ? html`
 			<div class="spinner"></div>
@@ -111,12 +119,14 @@ const processResults = (results) => {
 
 export const resultsView = async (query) => {
 
-	const [ mode, ip, prefixLength, optionsString ] = query;
+	const [ queryMode, ip, prefixLength, optionsString ] = query;
 
 	const searchParams = new URLSearchParams(optionsString);
-	searchParams.append(mode, `${ip}/${prefixLength}`);
+	searchParams.append(queryMode, `${ip}/${prefixLength}`);
 
 	render(resultsTemplate(query, [], false), document.getElementById('content'));
+	if (viewMode === 'graph') await forceGraph.init(document.getElementById("graph"));
+
 	const response = await fetch("/api/query?" + searchParams);
 	if (!response.ok) {
 		render(errorTemplate(query, {
@@ -134,7 +144,9 @@ export const resultsView = async (query) => {
 		if (result.value) {
 			results.push(result.value);
 		}
-		render(resultsTemplate(query, processResults(results), result.done), document.getElementById('content'));
+		const processedResults = processResults(results);
+		if (viewMode === 'graph') forceGraph.setData(processedResults);
+		render(resultsTemplate(query, processedResults, result.done), document.getElementById('content'));
 	}
 	if (results.length == 0) {
 		render(errorTemplate(query, {
