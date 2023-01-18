@@ -26,7 +26,7 @@ const resultsTemplate = (query, results, done) => html`
 				<tbody>
 					${results.map(result => html`
 						<tr>
-							<td><span>${result.from_client}</span></td>
+							<td><span>${result.client_name}</span></td>
 							<td><span>${result.peer_address}</span></td>
 							<td><span>${result.net}</span></td>
 							<td><span>${result.as_path.join(" ")}</span></td>

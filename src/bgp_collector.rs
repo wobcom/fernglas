@@ -9,7 +9,7 @@ use zettabgp::BgpCapability;
 use zettabgp::BgpTransportMode;
 use zettabgp::prelude::BgpNotificationMessage;
 use crate::bgpdumper::BgpDumper;
-use crate::table::{Table, TableSelector};
+use crate::table::{Table, TableSelector, Client};
 use serde::Deserialize;
 use log::*;
 
@@ -33,9 +33,23 @@ pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, cli
         ),
         stream,
     );
-    dumper.start_active().await?;
+    let open_message = dumper.start_active().await?;
     let stream = dumper.lifecycle();
     pin_mut!(stream);
+    let client_name = cfg.name_override
+        .or(open_message.caps.iter().find_map(|x| {
+            if let BgpCapability::CapFQDN(hostname, domainname) = x {
+                let mut name = hostname.to_string();
+                if domainname != "" {
+                    name = format!("{}.{}", name, domainname);
+                }
+                Some(name)
+            } else {
+                None
+            }
+        }))
+        .unwrap_or(client_addr.ip().to_string());
+    table.client_up(client_addr, Client { client_name, ..Default::default() }).await;
     loop {
         let update = match stream.next().await {
             Some(Ok(update)) => update,
@@ -51,6 +65,7 @@ pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, cli
 pub struct PeerConfig {
     pub asn: u32,
     pub router_id: Ipv4Addr,
+    pub name_override: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -75,7 +90,7 @@ pub async fn run(cfg: BgpCollectorConfig, table: impl Table) -> anyhow::Result<(
                     Err(e) => warn!("disconnected {} {}", client_addr, e),
                     Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
                 };
-                table.clear_router_table(client_addr).await;
+                table.client_down(client_addr).await;
             });
         } else {
             info!("unexpected connection from {}", client_addr);

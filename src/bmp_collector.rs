@@ -1,4 +1,4 @@
-use futures_util::StreamExt;
+use futures_util::{StreamExt, pin_mut};
 use bitvec::view::BitView;
 use bitvec::prelude::Msb0;
 use std::net::SocketAddr;
@@ -8,7 +8,7 @@ use zettabgp::bmp::BmpMessage;
 use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
 use zettabgp::bmp::prelude::BmpMessagePeerHeader;
 use zettabgp::bmp::prelude::BmpMessageTermination;
-use crate::table::{Table, TableSelector, SessionId};
+use crate::table::{Table, TableSelector, SessionId, Session, Client};
 use serde::Deserialize;
 use log::*;
 
@@ -40,28 +40,40 @@ async fn process_route_monitoring(table: &impl Table, client_addr: SocketAddr, r
 }
 
 pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Table) -> anyhow::Result<BmpMessageTermination> {
-    let mut read = LengthDelimitedCodec::builder()
+    let read = LengthDelimitedCodec::builder()
         .length_field_offset(1)
         .length_field_type::<u32>()
         .num_skip(0)
-        .new_read(io);
+        .new_read(io)
+        .filter_map(|msg| async move {
+            let orig_msg = match msg {
+                Ok(v) => v,
+                Err(e) => {
+                    warn!("BMP Codec Error: {:?}", e);
+                    return None;
+                }
+            };
+            match BmpMessage::decode_from(&orig_msg[5..]) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    warn!("BMP Parse Error: {:?}", e);
+                    warn!("{:x?}", &orig_msg);
+                    None
+                }
+            }
+        });
+    pin_mut!(read);
+    let init_msg = match read.next().await {
+        Some(BmpMessage::Initiation(i)) => i,
+        other => {
+            anyhow::bail!("expected initiation message, got: {:?}", other);
+        }
+    };
+    let client_name = init_msg.sys_name.unwrap_or(client_addr.ip().to_string());
+    table.client_up(client_addr, Client { client_name }).await;
+
     loop {
         let msg = read.next().await.ok_or(anyhow::anyhow!("unexpected end of stream"))?;
-        let orig_msg = match msg {
-            Ok(v) => v,
-            Err(e) => {
-                warn!("BMP Codec Error: {:?}", e);
-                continue;
-            }
-        };
-        let msg = match BmpMessage::decode_from(&orig_msg[5..]) {
-            Ok(v) => v,
-            Err(e) => {
-                warn!("BMP Parse Error: {:?}", e);
-                warn!("{:x?}", &orig_msg);
-                continue;
-            }
-        };
 
         match msg {
             BmpMessage::RouteMonitoring(rm) => {
@@ -69,6 +81,14 @@ pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Tab
             }
             BmpMessage::PeerUpNotification(n) => {
                 trace!("{} {:?}", client_addr, n);
+                let session = match table_selector_for_peer(client_addr, &n.peer) {
+                    Some(TableSelector::PrePolicyAdjIn(session)) => session,
+                    _ => {
+                        warn!("could not process peer down for peer type {} flags {:x}", n.peer.peertype, n.peer.flags);
+                        continue;
+                    }
+                };
+                table.session_up(session, Session {}).await;
             }
             BmpMessage::PeerDownNotification(n) => {
                 trace!("{} {:?}", client_addr, n);
@@ -79,7 +99,7 @@ pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Tab
                         continue;
                     }
                 };
-                table.clear_peer_table(session).await;
+                table.session_down(session, None).await;
             }
             BmpMessage::Termination(n) => break Ok(n),
             msg => trace!("unknown message from {} {:#?}", client_addr, msg),
@@ -104,7 +124,7 @@ pub async fn run(cfg: BmpCollectorConfig, table: impl Table) -> anyhow::Result<(
                 Err(e) => warn!("disconnected {} {}", client_addr, e),
                 Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
             };
-            table.clear_router_table(client_addr).await;
+            table.client_down(client_addr).await;
         });
 
     }

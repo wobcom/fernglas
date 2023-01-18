@@ -38,7 +38,7 @@ impl BgpDumper {
             stop_keepalives: None,
         }
     }
-    pub async fn start_active(&mut self) -> Result<(), BgpError> {
+    pub async fn start_active(&mut self) -> Result<BgpOpenMessage, BgpError> {
         let mut bom = self.params.open_message();
         let mut buf = [255 as u8; 4096];
         let messagelen = match bom.encode_to(&self.params, &mut buf[19..]) {
@@ -58,9 +58,9 @@ impl BgpDumper {
         bom.decode_from(&self.params, &buf[..])?;
         debug!("{:?}", bom);
         self.params.hold_time = bom.hold_time;
-        self.params.caps = bom.caps;
+        self.params.caps = bom.caps.clone();
         self.params.check_caps();
-        Ok(())
+        Ok(bom)
     }
     fn start_keepalives(&self) -> oneshot::Sender<()> {
         let (tx, mut rx) = oneshot::channel();

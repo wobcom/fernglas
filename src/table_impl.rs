@@ -14,8 +14,9 @@ use rayon::iter::IntoParallelIterator;
 use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
 use patricia_tree::PatriciaMap;
+use log::*;
 
-use crate::table::{RouteAttrs, Query, SessionId, TableSelector, Table, NetQuery, TableQuery, QueryResult};
+use crate::table::{RouteAttrs, Query, SessionId, TableSelector, Table, NetQuery, TableQuery, QueryResult, Client, Session};
 
 macro_rules! encode_net {
     ($input:ident, $identifier:expr) => {
@@ -58,25 +59,33 @@ type RouteMap = Arc<Mutex<PatriciaMap<RouteAttrs>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
+    clients: Arc<Mutex<HashMap<SocketAddr, Client>>>,
+    sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
     tables: Arc<Mutex<HashMap<TableSelector, RouteMap>>>,
 }
 
-fn tables_for_router_fn(query_from_client: SocketAddr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
+fn client_addr_from_table_selector(k: &TableSelector) -> SocketAddr {
+    match k {
+        TableSelector::LocRib { from_client } => *from_client,
+        TableSelector::PostPolicyAdjIn(session) => session.from_client,
+        TableSelector::PrePolicyAdjIn(session) => session.from_client,
+    }
+}
+fn session_id_from_table_selector(k: &TableSelector) -> Option<&SessionId> {
+    match k {
+        TableSelector::LocRib { .. } => None,
+        TableSelector::PostPolicyAdjIn(session) => Some(session),
+        TableSelector::PrePolicyAdjIn(session) => Some(session),
+    }
+}
+fn tables_for_client_fn(query_from_client: SocketAddr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
     move |(k, _): &(_, _)| {
-        match &k {
-            TableSelector::LocRib { from_client } => *from_client == query_from_client,
-            TableSelector::PostPolicyAdjIn(session) => session.from_client == query_from_client,
-            TableSelector::PrePolicyAdjIn(session) => session.from_client == query_from_client,
-        }
+        client_addr_from_table_selector(&k) == query_from_client
     }
 }
 fn tables_for_session_fn(session_id: SessionId) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
     move |(k, _): &(_, _)| {
-        match &k {
-            TableSelector::LocRib { .. } => false,
-            TableSelector::PostPolicyAdjIn(session) => *session == session_id,
-            TableSelector::PrePolicyAdjIn(session) => *session == session_id,
-        }
+        session_id_from_table_selector(&k) == Some(&session_id)
     }
 }
 
@@ -84,10 +93,10 @@ impl InMemoryTable {
     fn get_table(&self, sel: TableSelector) -> RouteMap {
         self.tables.lock().unwrap().entry(sel).or_insert(Default::default()).clone()
     }
-    fn get_tables_for_router(&self, router: SocketAddr) -> Vec<(TableSelector, RouteMap)> {
+    fn get_tables_for_client(&self, router: SocketAddr) -> Vec<(TableSelector, RouteMap)> {
         self.tables.lock().unwrap()
             .iter()
-            .filter(tables_for_router_fn(router))
+            .filter(tables_for_client_fn(router))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
@@ -118,7 +127,7 @@ impl Table for InMemoryTable {
 
         let tables = match query.table_query {
             Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
-            Some(TableQuery::Router(router_id)) => self.get_tables_for_router(router_id),
+            Some(TableQuery::Router(router_id)) => self.get_tables_for_client(router_id),
             Some(TableQuery::Session(session_id)) => self.get_tables_for_session(session_id),
             None => self.tables.lock().unwrap().clone().into_iter().collect(),
         };
@@ -193,14 +202,52 @@ impl Table for InMemoryTable {
             };
         });
 
-        Box::pin(ReceiverStream::new(rx).map(|(table, net, attrs)| QueryResult { net, table, attrs }).take(max_results))
+        let clients = self.clients.clone();
+        let sessions = self.sessions.clone();
+        Box::pin(ReceiverStream::new(rx)
+            .filter_map(move |(table, net, attrs)| {
+                let clients = clients.clone();
+                let sessions = sessions.clone();
+                async move {
+                    let client = match clients.lock().unwrap().get(&client_addr_from_table_selector(&table)) {
+                        Some(v) => v.clone(),
+                        None => {
+                            warn!("client is not connected");
+                            return None;
+                        }
+                    };
+                    let session = session_id_from_table_selector(&table)
+                        .and_then(|session_id| sessions.lock().unwrap().get(&session_id).cloned());
+                    Some(QueryResult {
+                        net,
+                        table,
+                        attrs,
+                        client,
+                        session
+                    })
+                }
+            })
+            .take(max_results))
     }
 
-    async fn clear_router_table(&self, router: SocketAddr) {
-        self.tables.lock().unwrap().retain(|k, v| !(tables_for_router_fn(router)(&(k, v))));
+    async fn client_up(&self, client_addr: SocketAddr, client_data: Client) {
+        self.clients.lock().unwrap().insert(client_addr, client_data);
+    }
+    async fn client_down(&self, client_addr: SocketAddr) {
+        self.clients.lock().unwrap().remove(&client_addr);
+        self.sessions.lock().unwrap().retain(|k, _| k.from_client != client_addr);
+        self.tables.lock().unwrap().retain(|k, v| !(tables_for_client_fn(client_addr)(&(k, v))));
     }
 
-    async fn clear_peer_table(&self, session: SessionId) {
+    async fn session_up(&self, session: SessionId, new_state: Session) {
+        self.sessions.lock().unwrap().insert(session, new_state);
+    }
+    async fn session_down(&self, session: SessionId, new_state: Option<Session>) {
+        if let Some(new_state) = new_state {
+            self.sessions.lock().unwrap().insert(session.clone(), new_state);
+        } else {
+            self.sessions.lock().unwrap().remove(&session);
+        }
         self.tables.lock().unwrap().retain(|k, v| !(tables_for_session_fn(session.clone())(&(k, v))));
     }
 }

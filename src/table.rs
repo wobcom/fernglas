@@ -77,6 +77,10 @@ pub struct QueryResult {
     #[serde(flatten)]
     pub table: TableSelector,
     #[serde(flatten)]
+    pub client: Client,
+    #[serde(flatten)]
+    pub session: Option<Session>,
+    #[serde(flatten)]
     pub attrs: RouteAttrs,
 }
 
@@ -84,6 +88,17 @@ pub struct QueryResult {
 pub struct QueryLimits {
     pub max_results_per_table: usize,
     pub max_results: usize,
+}
+
+/// information saved about a connected router
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Client {
+    pub client_name: String,
+}
+
+/// information saved about a connected peer
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Session {
 }
 
 impl Default for QueryLimits {
@@ -103,9 +118,13 @@ pub trait Table: Clone + Send + Sync + 'static {
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>>;
 
-    async fn clear_router_table(&self, router: SocketAddr);
+    async fn client_up(&self, client_addr: SocketAddr, client_data: Client);
 
-    async fn clear_peer_table(&self, session: SessionId);
+    async fn client_down(&self, client_addr: SocketAddr);
+
+    async fn session_up(&self, session: SessionId, session_data: Session);
+
+    async fn session_down(&self, session: SessionId, new_state: Option<Session>);
 
     async fn insert_bgp_update(&self, session: TableSelector, update: zettabgp::prelude::BgpUpdateMessage) {
         use zettabgp::prelude::*;
