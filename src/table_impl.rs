@@ -64,43 +64,28 @@ pub struct InMemoryTable {
     tables: Arc<Mutex<HashMap<TableSelector, RouteMap>>>,
 }
 
-fn client_addr_from_table_selector(k: &TableSelector) -> SocketAddr {
-    match k {
-        TableSelector::LocRib { from_client } => *from_client,
-        TableSelector::PostPolicyAdjIn(session) => session.from_client,
-        TableSelector::PrePolicyAdjIn(session) => session.from_client,
-    }
-}
-fn session_id_from_table_selector(k: &TableSelector) -> Option<&SessionId> {
-    match k {
-        TableSelector::LocRib { .. } => None,
-        TableSelector::PostPolicyAdjIn(session) => Some(session),
-        TableSelector::PrePolicyAdjIn(session) => Some(session),
-    }
-}
-fn tables_for_client_fn(query_from_client: SocketAddr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
+fn tables_for_client_fn(query_from_client: &SocketAddr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool + '_ {
     move |(k, _): &(_, _)| {
-        client_addr_from_table_selector(&k) == query_from_client
+        k.client_addr() == query_from_client
     }
 }
-fn tables_for_session_fn(session_id: SessionId) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool {
+fn tables_for_session_fn(session_id: &SessionId) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool + '_ {
     move |(k, _): &(_, _)| {
-        session_id_from_table_selector(&k) == Some(&session_id)
+        k.session_id() == Some(session_id)
     }
 }
-
 impl InMemoryTable {
     fn get_table(&self, sel: TableSelector) -> RouteMap {
         self.tables.lock().unwrap().entry(sel).or_insert(Default::default()).clone()
     }
-    fn get_tables_for_client(&self, router: SocketAddr) -> Vec<(TableSelector, RouteMap)> {
+    fn get_tables_for_client(&self, client_addr: &SocketAddr) -> Vec<(TableSelector, RouteMap)> {
         self.tables.lock().unwrap()
             .iter()
-            .filter(tables_for_client_fn(router))
+            .filter(tables_for_client_fn(client_addr))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
-    fn get_tables_for_session(&self, session_id: SessionId) -> Vec<(TableSelector, RouteMap)> {
+    fn get_tables_for_session(&self, session_id: &SessionId) -> Vec<(TableSelector, RouteMap)> {
         self.tables.lock().unwrap()
             .iter()
             .filter(tables_for_session_fn(session_id))
@@ -127,8 +112,8 @@ impl Table for InMemoryTable {
 
         let tables = match query.table_query {
             Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
-            Some(TableQuery::Router(router_id)) => self.get_tables_for_client(router_id),
-            Some(TableQuery::Session(session_id)) => self.get_tables_for_session(session_id),
+            Some(TableQuery::Router(client_addr)) => self.get_tables_for_client(&client_addr),
+            Some(TableQuery::Session(session_id)) => self.get_tables_for_session(&session_id),
             None => self.tables.lock().unwrap().clone().into_iter().collect(),
         };
 
@@ -209,14 +194,14 @@ impl Table for InMemoryTable {
                 let clients = clients.clone();
                 let sessions = sessions.clone();
                 async move {
-                    let client = match clients.lock().unwrap().get(&client_addr_from_table_selector(&table)) {
+                    let client = match clients.lock().unwrap().get(&table.client_addr()) {
                         Some(v) => v.clone(),
                         None => {
                             warn!("client is not connected");
                             return None;
                         }
                     };
-                    let session = session_id_from_table_selector(&table)
+                    let session = table.session_id()
                         .and_then(|session_id| sessions.lock().unwrap().get(&session_id).cloned());
                     Some(QueryResult {
                         net,
@@ -236,7 +221,7 @@ impl Table for InMemoryTable {
     async fn client_down(&self, client_addr: SocketAddr) {
         self.clients.lock().unwrap().remove(&client_addr);
         self.sessions.lock().unwrap().retain(|k, _| k.from_client != client_addr);
-        self.tables.lock().unwrap().retain(|k, v| !(tables_for_client_fn(client_addr)(&(k, v))));
+        self.tables.lock().unwrap().retain(|k, v| !(tables_for_client_fn(&client_addr)(&(k, v))));
     }
 
     async fn session_up(&self, session: SessionId, new_state: Session) {
@@ -248,6 +233,6 @@ impl Table for InMemoryTable {
         } else {
             self.sessions.lock().unwrap().remove(&session);
         }
-        self.tables.lock().unwrap().retain(|k, v| !(tables_for_session_fn(session.clone())(&(k, v))));
+        self.tables.lock().unwrap().retain(|k, v| !(tables_for_session_fn(&session)(&(k, v))));
     }
 }

@@ -42,6 +42,23 @@ pub enum TableSelector {
     },
 }
 
+impl TableSelector {
+    pub fn client_addr(&self) -> &SocketAddr {
+        match self {
+            TableSelector::LocRib { from_client } => from_client,
+            TableSelector::PostPolicyAdjIn(session) => &session.from_client,
+            TableSelector::PrePolicyAdjIn(session) => &session.from_client,
+        }
+    }
+    pub fn session_id(&self) -> Option<&SessionId> {
+        match self {
+            TableSelector::LocRib { .. } => None,
+            TableSelector::PostPolicyAdjIn(session) => Some(session),
+            TableSelector::PrePolicyAdjIn(session) => Some(session),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TableQuery {
     Table(TableSelector),

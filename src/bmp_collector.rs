@@ -81,25 +81,15 @@ pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Tab
             }
             BmpMessage::PeerUpNotification(n) => {
                 trace!("{} {:?}", client_addr, n);
-                let session = match table_selector_for_peer(client_addr, &n.peer) {
-                    Some(TableSelector::PrePolicyAdjIn(session)) => session,
-                    _ => {
-                        warn!("could not process peer down for peer type {} flags {:x}", n.peer.peertype, n.peer.flags);
-                        continue;
-                    }
-                };
-                table.session_up(session, Session {}).await;
+                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer).and_then(|table| table.session_id().cloned()) {
+                    table.session_up(session_id, Session {}).await;
+                }
             }
             BmpMessage::PeerDownNotification(n) => {
                 trace!("{} {:?}", client_addr, n);
-                let session = match table_selector_for_peer(client_addr, &n.peer) {
-                    Some(TableSelector::PrePolicyAdjIn(session)) => session,
-                    _ => {
-                        warn!("could not process peer down for peer type {} flags {:x}", n.peer.peertype, n.peer.flags);
-                        continue;
-                    }
-                };
-                table.session_down(session, None).await;
+                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer).and_then(|table| table.session_id().cloned()) {
+                    table.session_down(session_id, None).await;
+                }
             }
             BmpMessage::Termination(n) => break Ok(n),
             msg => trace!("unknown message from {} {:#?}", client_addr, msg),
