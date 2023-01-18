@@ -2,7 +2,8 @@ use futures_util::StreamExt;
 use futures_util::pin_mut;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{Ipv4Addr, SocketAddr, IpAddr};
+use std::collections::HashMap;
 use zettabgp::BgpSessionParams;
 use zettabgp::BgpCapability;
 use zettabgp::BgpTransportMode;
@@ -12,7 +13,7 @@ use crate::table::{Table, TableSelector};
 use serde::Deserialize;
 use log::*;
 
-pub async fn run_peer(cfg: BgpCollectorConfig, table: impl Table, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<BgpNotificationMessage> {
+pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<BgpNotificationMessage> {
     let mut dumper = BgpDumper::new(
         BgpSessionParams::new(
             cfg.asn,
@@ -47,10 +48,17 @@ pub async fn run_peer(cfg: BgpCollectorConfig, table: impl Table, stream: TcpStr
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct BgpCollectorConfig {
+pub struct PeerConfig {
     pub asn: u32,
     pub router_id: Ipv4Addr,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BgpCollectorConfig {
     pub bind: SocketAddr,
+    #[serde(default)]
+    pub peers: HashMap<IpAddr, PeerConfig>,
+    pub default_peer_config: Option<PeerConfig>,
 }
 
 pub async fn run(cfg: BgpCollectorConfig, table: impl Table) -> anyhow::Result<()> {
@@ -61,12 +69,16 @@ pub async fn run(cfg: BgpCollectorConfig, table: impl Table) -> anyhow::Result<(
 
         let table = table.clone();
         let cfg = cfg.clone();
-        tokio::spawn(async move {
-            match run_peer(cfg.clone(), table.clone(), io, client_addr).await {
-                Err(e) => warn!("disconnected {} {}", client_addr, e),
-                Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
-            };
-            table.clear_router_table(client_addr).await;
-        });
+        if let Some(peer_cfg) = cfg.peers.get(&client_addr.ip()).cloned().or(cfg.default_peer_config) {
+            tokio::spawn(async move {
+                match run_peer(peer_cfg, table.clone(), io, client_addr).await {
+                    Err(e) => warn!("disconnected {} {}", client_addr, e),
+                    Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
+                };
+                table.clear_router_table(client_addr).await;
+            });
+        } else {
+            info!("unexpected connection from {}", client_addr);
+        }
     }
 }
