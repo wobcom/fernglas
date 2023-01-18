@@ -56,6 +56,7 @@ impl BgpDumper {
             return Err(BgpError::static_str("Invalid state to start_active"));
         }
         bom.decode_from(&self.params, &buf[..])?;
+        debug!("{:?}", bom);
         self.params.hold_time = bom.hold_time;
         self.params.caps = bom.caps;
         self.params.check_caps();

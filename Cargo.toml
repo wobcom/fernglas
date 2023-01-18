@@ -25,4 +25,4 @@ serde_yaml = "0.9.16"
 tokio = { version = "1.23.0", features = ["rt", "macros", "time", "rt-multi-thread", "io-util", "fs"] }
 tokio-stream = "0.1.11"
 tokio-util = { version = "0.7.4", features = ["codec"] }
-zettabgp = "0.3.3"
+zettabgp = { git = "https://github.com/wobcom/zettabgp", branch = "more-capabilities" }
