@@ -7,8 +7,6 @@ mod api;
 
 use serde::Deserialize;
 use futures_util::future::select_all;
-use std::pin::Pin;
-use std::future::Future;
 
 #[derive(Deserialize)]
 #[serde(tag = "collector_type")]
@@ -46,17 +44,17 @@ async fn main() -> anyhow::Result<()> {
 
     let cfg: Config = serde_yaml::from_slice(&tokio::fs::read(&config_path).await?)?;
 
-    let mut futures: Vec<Pin<Box<dyn Future<Output = anyhow::Result<()>>>>> = vec![];
+    let mut futures = vec![];
 
-    futures.push(Box::pin(api::run_api_server(cfg.api, table.clone())));
+    futures.push(tokio::task::spawn(api::run_api_server(cfg.api, table.clone())));
 
-    futures.extend(cfg.collectors.into_iter().map(|collector| -> Pin<Box<dyn Future<Output = anyhow::Result<()>>>> {
+    futures.extend(cfg.collectors.into_iter().map(|collector| {
         match collector {
-            CollectorConfig::Bmp(cfg) => Box::pin(bmp_collector::run(cfg, table.clone())),
-            CollectorConfig::Bgp(cfg) => Box::pin(bgp_collector::run(cfg, table.clone())),
+            CollectorConfig::Bmp(cfg) => tokio::task::spawn(bmp_collector::run(cfg, table.clone())),
+            CollectorConfig::Bgp(cfg) => tokio::task::spawn(bgp_collector::run(cfg, table.clone())),
         }
     }));
 
-    select_all(futures).await.0
+    select_all(futures).await.0?
 }
 
