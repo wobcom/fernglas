@@ -22,7 +22,6 @@ async fn query<T: Table>(State((cfg, table)): State<(Arc<ApiServerConfig>, T)>, 
     trace!("request: {}", serde_json::to_string_pretty(&query).unwrap());
     let mut limits = query.limits.take().unwrap_or(cfg.query_limits.clone());
     limits.max_results = std::cmp::min(limits.max_results, cfg.query_limits.max_results);
-    limits.max_results_per_table = std::cmp::min(limits.max_results_per_table, cfg.query_limits.max_results_per_table);
     query.limits = Some(limits);
     let stream = table.get_routes(query)
         .map(|route| {

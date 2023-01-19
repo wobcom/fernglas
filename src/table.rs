@@ -103,7 +103,6 @@ pub struct QueryResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryLimits {
-    pub max_results_per_table: usize,
     pub max_results: usize,
 }
 
@@ -121,7 +120,6 @@ pub struct Session {
 impl Default for QueryLimits {
     fn default() -> Self {
         Self {
-            max_results_per_table: 200,
             max_results: 500
         }
     }
