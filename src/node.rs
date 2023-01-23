@@ -69,6 +69,10 @@ impl Bitmap {
     }
 }
 
+impl<T: Debug> Default for Node<T> {
+    fn default() -> Self { Node::new() }
+}
+
 impl<T: Debug> Node<T> {
     pub fn new() -> Node<T> {
         let mut bitmap = Bitmap { bitmap: 0 };
@@ -120,6 +124,7 @@ impl<T: Debug> Node<T> {
         let results = self.bitmap.results_bits().iter_ones().map(from_index).zip(results_iter).collect::<Vec<_>>();
 
         self.bitmap = Bitmap { bitmap: 0 };
+        self.bitmap.set_is_end_node(false);
 
         for ((nibble, prefix_len), value) in results {
             self.insert(&[nibble], prefix_len, value);
