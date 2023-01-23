@@ -4,7 +4,7 @@ use axum::response::IntoResponse;
 use axum::Router;
 use axum::routing::get;
 use crate::table::{Query, QueryLimits, Table};
-use futures_util::StreamExt;
+use futures_util::{StreamExt, FutureExt};
 use std::sync::Arc;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -38,13 +38,15 @@ fn make_api<T: Table>(cfg: ApiServerConfig, table: T) -> Router {
         .with_state((Arc::new(cfg), table))
 }
 
-pub async fn run_api_server<T: Table>(cfg: ApiServerConfig, table: T) -> anyhow::Result<()> {
+pub async fn run_api_server<T: Table>(cfg: ApiServerConfig, table: T, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
     let make_service = Router::new()
         .nest("/api", make_api(cfg.clone(), table))
         .into_make_service();
 
     axum::Server::bind(&cfg.bind)
-        .serve(make_service).await?;
+        .serve(make_service)
+        .with_graceful_shutdown(shutdown.changed().map(|_| ()))
+        .await?;
 
     Ok(())
 }

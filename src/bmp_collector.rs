@@ -1,4 +1,5 @@
 use futures_util::{StreamExt, pin_mut};
+use futures_util::future::join_all;
 use bitvec::view::BitView;
 use bitvec::prelude::Msb0;
 use std::net::SocketAddr;
@@ -102,20 +103,35 @@ pub struct BmpCollectorConfig {
     pub bind: SocketAddr,
 }
 
-pub async fn run(cfg: BmpCollectorConfig, table: impl Table) -> anyhow::Result<()> {
+pub async fn run(cfg: BmpCollectorConfig, table: impl Table, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
     let listener = TcpListener::bind(cfg.bind).await?;
+    let mut running_tasks = vec![];
     loop {
-        let (io, client_addr) = listener.accept().await?;
-        info!("connected {:?}", client_addr);
+        tokio::select! {
+            new_conn = listener.accept() => {
+                let (io, client_addr) = new_conn?;
+                info!("connected {:?}", client_addr);
 
-        let table = table.clone();
-        tokio::spawn(async move {
-            match run_client(io, client_addr, &table).await {
-                Err(e) => warn!("disconnected {} {}", client_addr, e),
-                Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
-            };
-            table.client_down(client_addr).await;
-        });
-
+                let table = table.clone();
+                let mut shutdown = shutdown.clone();
+                running_tasks.push(tokio::spawn(async move {
+                    tokio::select! {
+                        res = run_client(io, client_addr, &table) => {
+                            match res {
+                                Err(e) => warn!("disconnected {} {}", client_addr, e),
+                                Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
+                            }
+                        }
+                        _ = shutdown.changed() => {
+                        }
+                    };
+                    table.client_down(client_addr).await;
+                }));
+            }
+            _ = shutdown.changed() => {
+                join_all(running_tasks).await;
+                break Ok(());
+            }
+        }
     }
 }

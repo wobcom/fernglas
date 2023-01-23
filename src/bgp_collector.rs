@@ -1,5 +1,5 @@
-use futures_util::StreamExt;
-use futures_util::pin_mut;
+use futures_util::{StreamExt, pin_mut};
+use futures_util::future::join_all;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use std::net::{Ipv4Addr, SocketAddr, IpAddr};
@@ -76,24 +76,39 @@ pub struct BgpCollectorConfig {
     pub default_peer_config: Option<PeerConfig>,
 }
 
-pub async fn run(cfg: BgpCollectorConfig, table: impl Table) -> anyhow::Result<()> {
+pub async fn run(cfg: BgpCollectorConfig, table: impl Table, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
     let listener = TcpListener::bind(cfg.bind).await?;
+    let mut running_tasks = vec![];
     loop {
-        let (io, client_addr) = listener.accept().await?;
-        info!("connected {:?}", client_addr);
+        tokio::select! {
+            new_conn = listener.accept() => {
+                let (io, client_addr) = new_conn?;
+                info!("connected {:?}", client_addr);
 
-        let table = table.clone();
-        let cfg = cfg.clone();
-        if let Some(peer_cfg) = cfg.peers.get(&client_addr.ip()).cloned().or(cfg.default_peer_config) {
-            tokio::spawn(async move {
-                match run_peer(peer_cfg, table.clone(), io, client_addr).await {
-                    Err(e) => warn!("disconnected {} {}", client_addr, e),
-                    Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
-                };
-                table.client_down(client_addr).await;
-            });
-        } else {
-            info!("unexpected connection from {}", client_addr);
+                if let Some(peer_cfg) = cfg.peers.get(&client_addr.ip()).or(cfg.default_peer_config.as_ref()).cloned() {
+                    let table = table.clone();
+                    let mut shutdown = shutdown.clone();
+                    running_tasks.push(tokio::spawn(async move {
+                        tokio::select! {
+                            res = run_peer(peer_cfg, table.clone(), io, client_addr) => {
+                                match res {
+                                    Err(e) => warn!("disconnected {} {}", client_addr, e),
+                                    Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
+                                }
+                            }
+                            _ = shutdown.changed() => {
+                            }
+                        };
+                        table.client_down(client_addr).await;
+                    }));
+                } else {
+                    info!("unexpected connection from {}", client_addr);
+                }
+            }
+            _ = shutdown.changed() => {
+                join_all(running_tasks).await;
+                break Ok(());
+            }
         }
     }
 }
