@@ -16,7 +16,9 @@ use bitvec::view::BitView;
 use patricia_tree::PatriciaMap;
 use log::*;
 
-use crate::table::{RouteAttrs, Query, SessionId, TableSelector, Table, NetQuery, TableQuery, QueryResult, Client, Session};
+use crate::table::*;
+use crate::compressed_attrs::*;
+
 
 macro_rules! encode_net {
     ($input:ident, $identifier:expr) => {
@@ -55,13 +57,15 @@ fn from_key(key: &[u8]) -> IpNet {
     }
 }
 
-type RouteMap = Arc<Mutex<PatriciaMap<RouteAttrs>>>;
+type RouteMap = Arc<Mutex<PatriciaMap<Arc<CompressedRouteAttrs>>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
     clients: Arc<Mutex<HashMap<SocketAddr, Client>>>,
     sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
     tables: Arc<Mutex<HashMap<TableSelector, RouteMap>>>,
+
+    caches: Arc<Mutex<Caches>>,
 }
 
 fn tables_for_client_fn(query_from_client: &SocketAddr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool + '_ {
@@ -97,9 +101,10 @@ impl InMemoryTable {
 #[async_trait]
 impl Table for InMemoryTable {
     async fn update_route(&self, net: IpNet, table: TableSelector, route: RouteAttrs) {
+        let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.insert(to_key(&net), route);
+        table.insert(to_key(&net), compressed);
     }
 
     async fn withdraw_route(&self, net: IpNet, table: TableSelector) {
@@ -117,11 +122,11 @@ impl Table for InMemoryTable {
             None => self.tables.lock().unwrap().clone().into_iter().collect(),
         };
 
-        let mut nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, RouteAttrs)) -> bool + Send + Sync> = Box::new(|_| true);
+        let mut nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Arc<CompressedRouteAttrs>)) -> bool + Send + Sync> = Box::new(|_| true);
 
         if let Some(as_path_regex) = query.as_path_regex {
             let regex = Regex::new(&as_path_regex).unwrap(); // FIXME error handling
-            let new_filter_fn = move |(_, _, route): &(TableSelector, IpNet, RouteAttrs)| {
+            let new_filter_fn = move |(_, _, route): &(TableSelector, IpNet, Arc<CompressedRouteAttrs>)| {
                 let as_path_text = match &route.as_path {
                     Some(as_path) => as_path.iter().map(|asn| asn.to_string()).collect::<Vec<_>>().join(" "),
                     None => return false,
@@ -206,7 +211,7 @@ impl Table for InMemoryTable {
                     Some(QueryResult {
                         net,
                         table,
-                        attrs,
+                        attrs: decompress_route_attrs(&attrs),
                         client,
                         session
                     })
@@ -222,6 +227,7 @@ impl Table for InMemoryTable {
         self.clients.lock().unwrap().remove(&client_addr);
         self.sessions.lock().unwrap().retain(|k, _| k.from_client != client_addr);
         self.tables.lock().unwrap().retain(|k, v| !(tables_for_client_fn(&client_addr)(&(k, v))));
+        self.caches.lock().unwrap().remove_expired();
     }
 
     async fn session_up(&self, session: SessionId, new_state: Session) {
@@ -234,5 +240,6 @@ impl Table for InMemoryTable {
             self.sessions.lock().unwrap().remove(&session);
         }
         self.tables.lock().unwrap().retain(|k, v| !(tables_for_session_fn(&session)(&(k, v))));
+        self.caches.lock().unwrap().remove_expired();
     }
 }

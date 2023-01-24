@@ -4,6 +4,7 @@ mod bmp_collector;
 mod bgpdumper;
 mod bgp_collector;
 mod api;
+mod compressed_attrs;
 
 use serde::Deserialize;
 use futures_util::future::{join_all, select_all};
