@@ -27,14 +27,14 @@ fn usage(program: &str) -> ! {
     std::process::exit(1)
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 #[serde(tag = "collector_type")]
 pub enum CollectorConfig {
     Bmp(bmp_collector::BmpCollectorConfig),
     Bgp(bgp_collector::BgpCollectorConfig),
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Config {
     pub collectors: Vec<CollectorConfig>,
     pub api: api::ApiServerConfig,
