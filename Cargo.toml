@@ -26,3 +26,7 @@ tokio-stream = "0.1.11"
 tokio-util = { version = "0.7.4", features = ["codec"] }
 weak-table = "0.3.2"
 zettabgp = { git = "https://github.com/wobcom/zettabgp", branch = "more-capabilities" }
+
+[[bin]]
+name = "fernglas-configcheck"
+path = "src/config_check.rs"
