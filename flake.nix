@@ -8,7 +8,7 @@
   outputs = { self, nixpkgs, flake-utils }: {
     overlays.default = final: prev: {
       fernglas = final.callPackage (
-        { lib, rustPlatform }:
+        { lib, stdenv, rustPlatform }:
 
         rustPlatform.buildRustPackage {
           pname = "fernglas";
@@ -24,7 +24,7 @@
             };
           };
 
-          cargoBuildFlags = [ "--all-features" ];
+          cargoBuildFlags = lib.optionals (stdenv.hostPlatform.isMusl && stdenv.hostPlatform.isStatic) [ "--features" "mimalloc" ];
           cargoLock = {
             lockFile = ./Cargo.lock;
             allowBuiltinFetchGit = true;
