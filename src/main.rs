@@ -11,6 +11,10 @@ use futures_util::future::{join_all, select_all};
 use tokio::signal::unix::{signal, SignalKind};
 use log::*;
 
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[derive(Deserialize)]
 #[serde(tag = "collector_type")]
 enum CollectorConfig {
