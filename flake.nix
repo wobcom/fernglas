@@ -74,6 +74,20 @@
             '';
           }
 
+      fernglas-manual = final.callPackage (
+        { lib, stdenv, mdbook }:
+
+        stdenv.mkDerivation {
+          name = "fernglas-manual";
+          src = lib.cleanSource ./manual;
+          nativeBuildInputs = [ mdbook ];
+          buildPhase = ''
+            mdbook build -d ./build
+          '';
+          installPhase = ''
+            cp -r ./build $out
+          '';
+        }
       ) { };
     };
 

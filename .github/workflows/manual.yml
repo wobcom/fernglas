@@ -1,0 +1,22 @@
+name: "Manual"
+on:
+  pull_request:
+  push:
+jobs:
+  fernglas-manual:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3.3.0
+    - uses: cachix/install-nix-action@v18
+    - uses: cachix/cachix-action@v12
+      with:
+        name: wobcom-public
+        authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+    - run: nix build .#fernglas-manual -vL
+    - name: Deploy manual
+      if: ${{ github.repository == 'wobcom/fernglas' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+      uses: JamesIves/github-pages-deploy-action@v4.4.1
+      with:
+        branch: gh-pages
+        folder: result
+        target-folder: unstable
