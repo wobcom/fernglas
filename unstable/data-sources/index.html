@@ -142,6 +142,54 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="data-sources"><a class="header" href="#data-sources">Data sources</a></h1>
+<p>To hook up routers to your looking glass, you will have to configure either a BMP (BGP Monitoring Protocol) or BGP session between your router and the looking glass.</p>
+<p>When the router supports it, BMP is always the preferred option.</p>
+<p>For both the BGP and BMP collectors, multiple instances can be created (listening on different ports, etc.) and per-peer configuration can be provided based on the client IP.</p>
+<pre><code class="language-yml">
+collectors:
+
+  # BMP collector that listens on port 11019 and accepts all incoming connections
+  - collector_type: Bmp
+    bind: &quot;[::]:11019&quot;
+    default_peer_config: {}
+
+  # BMP collector that listens on the privileged port 11020 and accepts incoming connections only from select client IPs
+  - collector_type: Bmp
+    bind: &quot;[::]:11020&quot;
+    peers:
+      &quot;192.0.2.1&quot;: {}
+      &quot;192.0.2.2&quot;:
+        name_override: router02.example.org
+
+  # BGP collector that listens on port 1179 and accept all  incoming connections
+  - collector_type: Bgp
+    bind: &quot;[::]:1179&quot;
+    default_peer_config:
+      asn: 64496
+      router_id: 192.0.2.100
+
+  # BGP collector that listens on the privileged port 179 and accepts incoming connections only from select client IPs
+  - collector_type: Bgp
+    bind: &quot;[::]:179&quot;
+    peers:
+      &quot;192.0.2.1&quot;:
+        asn: 64496
+	router_id: 192.0.2.100
+      &quot;192.0.2.2&quot;:
+        asn: 64496
+	router_id: 192.0.2.100
+        name_override: router02.example.org
+</code></pre>
+<p>Valid options for BMP peer config:</p>
+<ul>
+<li><code>name_override</code> (optional): Use this string instead of the <code>sys_name</code> advertised in the BMP initiation message</li>
+</ul>
+<p>Valid options for BGP peer config:</p>
+<ul>
+<li><code>asn</code> (required): AS Number advertised to peer</li>
+<li><code>router_id</code> (required): Router ID advertised to peer</li>
+<li><code>name_override</code> (optional): Use this string instead of the hostname advertised in the <a href="https://www.ietf.org/archive/id/draft-walton-bgp-hostname-capability-02.txt">BGP hostname capability</a></li>
+</ul>
 
                     </main>
 
