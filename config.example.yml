@@ -4,3 +4,5 @@ api:
 collectors:
   - collector_type: Bmp
     bind: "[::]:11019"
+    peers:
+      "192.0.2.1": {}
