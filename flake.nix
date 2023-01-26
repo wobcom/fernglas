@@ -119,7 +119,7 @@
           name = "fernglas-frontend";
           tag = "latest";
           copyToRoot = buildEnv {
-            pname = "image-root";
+            name = "image-root";
             paths = [ fernglas-frontend ];
             extraPrefix = "/usr/share/fernglas-frontend";
           };
