@@ -1,0 +1,6 @@
+[book]
+authors = ["The Fernglas authors"]
+language = "en"
+multilingual = false
+src = "src"
+title = "Fernglas Manual"
