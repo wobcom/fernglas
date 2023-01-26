@@ -101,6 +101,31 @@
           '';
         }
       ) { };
+
+      fernglas-docker = final.callPackage (
+        { pkgsStatic, dockerTools }:
+
+        dockerTools.buildImage {
+          name = "fernglas";
+          tag = "latest";
+          copyToRoot = pkgsStatic.fernglas;
+        }
+      ) { };
+
+      fernglas-frontend-docker = final.callPackage (
+        { fernglas-frontend, dockerTools, buildEnv }:
+
+        dockerTools.buildImage {
+          name = "fernglas-frontend";
+          tag = "latest";
+          copyToRoot = buildEnv {
+            pname = "image-root";
+            paths = [ fernglas-frontend ];
+            extraPrefix = "/usr/share/fernglas-frontend";
+          };
+        }
+      ) { };
+
     };
 
     nixosModules.default =
