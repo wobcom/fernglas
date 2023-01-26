@@ -19,7 +19,8 @@
             src = lib.cleanSourceWith {
               filter =
                 name: type: !(lib.hasInfix "/frontend" name)
-                && !(lib.hasInfix "/manual" name);
+                && !(lib.hasInfix "/manual" name)
+                && !(lib.hasInfix "/.github" name);
               src = self;
             };
           };
