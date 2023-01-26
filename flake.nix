@@ -8,13 +8,22 @@
   outputs = { self, nixpkgs, flake-utils }: {
     overlays.default = final: prev: {
       fernglas = final.callPackage (
-        { rustPlatform }:
+        { lib, rustPlatform }:
 
         rustPlatform.buildRustPackage {
           pname = "fernglas";
           version =
             self.shortRev or "dirty-${toString self.lastModifiedDate}";
-          src = self;
+          src = lib.cleanSourceWith {
+            filter = lib.cleanSourceFilter;
+            src = lib.cleanSourceWith {
+              filter =
+                name: type: !(lib.hasInfix "/frontend" name)
+                && !(lib.hasInfix "/manual" name);
+              src = self;
+            };
+          };
+
           cargoBuildFlags = [ "--all-features" ];
           cargoLock = {
             lockFile = ./Cargo.lock;
@@ -26,53 +35,55 @@
       fernglas-frontend = final.callPackage (
         { lib, stdenv, yarn2nix-moretea, yarn, nodejs-slim }:
 
-          stdenv.mkDerivation {
-            pname = "fernglas-frontend";
-            version =
-              self.shortRev or "dirty-${toString self.lastModifiedDate}";
+        stdenv.mkDerivation {
+          pname = "fernglas-frontend";
+          version =
+            self.shortRev or "dirty-${toString self.lastModifiedDate}";
 
+          src = lib.cleanSourceWith {
+            filter = lib.cleanSourceFilter;
             src = lib.cleanSourceWith {
-              filter = lib.cleanSourceFilter;
-              src = lib.cleanSourceWith {
-                filter =
-                  name: type: !(lib.hasInfix "node_modules" name)
-                  && !(lib.hasInfix "dist" name);
-                src = ./frontend;
-              };
+              filter =
+                name: type: !(lib.hasInfix "node_modules" name)
+                && !(lib.hasInfix "dist" name);
+              src = ./frontend;
             };
+          };
 
-            offlineCache = let
-              yarnLock = ./frontend/yarn.lock;
-              yarnNix = yarn2nix-moretea.mkYarnNix { inherit yarnLock; };
-            in
-              yarn2nix-moretea.importOfflineCache yarnNix;
+          offlineCache = let
+            yarnLock = ./frontend/yarn.lock;
+            yarnNix = yarn2nix-moretea.mkYarnNix { inherit yarnLock; };
+          in
+            yarn2nix-moretea.importOfflineCache yarnNix;
 
-            nativeBuildInputs = [ yarn nodejs-slim yarn2nix-moretea.fixup_yarn_lock ];
+          nativeBuildInputs = [ yarn nodejs-slim yarn2nix-moretea.fixup_yarn_lock ];
 
-            configurePhase = ''
-              runHook preConfigure
+          configurePhase = ''
+            runHook preConfigure
 
-              export HOME=$NIX_BUILD_TOP/fake_home
-              yarn config --offline set yarn-offline-mirror $offlineCache
-              fixup_yarn_lock yarn.lock
-              yarn install --offline --frozen-lockfile --ignore-scripts --no-progress --non-interactive
-              patchShebangs node_modules/
+            export HOME=$NIX_BUILD_TOP/fake_home
+            yarn config --offline set yarn-offline-mirror $offlineCache
+            fixup_yarn_lock yarn.lock
+            yarn install --offline --frozen-lockfile --ignore-scripts --no-progress --non-interactive
+            patchShebangs node_modules/
 
-              runHook postConfigure
-            '';
+            runHook postConfigure
+          '';
 
-            buildPhase = ''
-              runHook preBuild
-              node_modules/.bin/webpack
-              runHook postBuild
-            '';
+          buildPhase = ''
+            runHook preBuild
+            node_modules/.bin/webpack
+            runHook postBuild
+          '';
 
-            installPhase = ''
-              runHook preInstall
-              mv dist $out
-              runHook postInstall
-            '';
-          }
+          installPhase = ''
+            runHook preInstall
+            mv dist $out
+            runHook postInstall
+          '';
+        }
+
+      ) { };
 
       fernglas-manual = final.callPackage (
         { lib, stdenv, mdbook }:

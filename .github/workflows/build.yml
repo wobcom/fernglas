@@ -22,7 +22,7 @@ jobs:
       with:
         name: wobcom-public
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: 'nix build .#${{ matrix.packageset }}.fernglas -v'
+    - run: 'nix build .#${{ matrix.packageset }}.fernglas -vL'
     - uses: actions/upload-artifact@v3
       with:
         name: '${{ matrix.packageset }}.fernglas'
@@ -36,7 +36,7 @@ jobs:
       with:
         name: wobcom-public
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
-    - run: nix build .#fernglas-frontend -v
+    - run: nix build .#fernglas-frontend -vL
     # https://github.com/actions/upload-artifact/issues/92
     - run: cp -r result/ result-frontend
     - uses: actions/upload-artifact@v3
