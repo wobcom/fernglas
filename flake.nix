@@ -102,6 +102,91 @@
       ) { };
     };
 
+    nixosModules.default =
+      { lib, config, options, pkgs, ... }:
+
+      let
+        cfg = config.services.fernglas;
+        settingsFormat = pkgs.formats.yaml { };
+
+        hostSystem = if (options.nixpkgs ? hostPlatform && options.nixpkgs.hostPlatform.isDefined)
+          then config.nixpkgs.hostPlatform.system
+          else config.nixpkgs.localSystem.system
+        ;
+        fernglasPkgs = if cfg.useMusl
+          then self.legacyPackages.${hostSystem}.pkgsCross.musl64
+          else self.legacyPackages.${hostSystem}
+        ;
+
+        cfgfile = pkgs.writeTextFile {
+          name = "config.yaml";
+          text = builtins.toJSON cfg.settings;
+          checkPhase = ''
+            ${fernglasPkgs.fernglas}/bin/fernglas-configcheck $out
+          '';
+        };
+      in {
+        options.services.fernglas = with lib; {
+          enable = mkEnableOption "fernglas looking glass";
+
+          logLevel = mkOption {
+            type = types.str;
+            default = "warn,fernglas=info";
+          };
+
+          useMusl = mkOption {
+            type = types.bool;
+            default = true;
+            description = "Use musl libc for improved performance";
+          };
+
+          useMimalloc = mkOption {
+            type = types.bool;
+            default = cfg.useMusl;
+            description = "Use mimalloc allocator for improved performance";
+          };
+
+          allowPrivilegedBind = mkOption {
+            type = types.bool;
+            default = false;
+            description = "Give the fernglas service the capability to bind to privileged ports (<1024)";
+          };
+
+          settings = mkOption {
+            type = settingsFormat.type;
+            description = "Fernglas configuration, which will be 1:1 translated to the config.yaml";
+          };
+        };
+
+        config = lib.mkIf cfg.enable {
+          systemd.services.fernglas = {
+            wantedBy = [ "multi-user.target" ];
+            serviceConfig = {
+              DynamicUser = true;
+              AmbientCapabilities = lib.optional cfg.allowPrivilegedBind [ "CAP_NET_BIND_SERVICE" ];
+              ExecStart = "${fernglasPkgs.fernglas}/bin/fernglas ${cfgfile}";
+
+              Restart = "always";
+              RestartSec = 10;
+              ProtectSystem = "strict";
+              NoNewPrivileges = true;
+              ProtectControlGroups = true;
+              PrivateTmp = true;
+              PrivateDevices = true;
+              DevicePolicy = "closed";
+              MemoryDenyWriteExecute = true;
+              ProtectHome = true;
+            };
+            environment = {
+              RUST_LOG = cfg.logLevel;
+            } // lib.optionalAttrs (cfg.useMimalloc) {
+              LD_PRELOAD = "${fernglasPkgs.mimalloc}/lib/libmimalloc.so";
+            };
+          };
+        };
+      }
+    ;
+
     nixConfig = {
       extra-substituters = [ "wobcom-public.cachix.org" ];
       extra-trusted-public-keys = [ "wobcom-public.cachix.org-1:bEm3vZ3mRNLDLMyFwPqgArvOR6vGpVtxCYLyp+r0An8=" ];
