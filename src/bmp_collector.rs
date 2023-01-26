@@ -2,7 +2,8 @@ use futures_util::{StreamExt, pin_mut};
 use futures_util::future::join_all;
 use bitvec::view::BitView;
 use bitvec::prelude::Msb0;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
+use std::collections::HashMap;
 use tokio_util::codec::length_delimited::LengthDelimitedCodec;
 use tokio::net::{TcpListener, TcpStream};
 use zettabgp::bmp::BmpMessage;
@@ -40,7 +41,7 @@ async fn process_route_monitoring(table: &impl Table, client_addr: SocketAddr, r
     table.insert_bgp_update(session, rm.update).await;
 }
 
-pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Table) -> anyhow::Result<BmpMessageTermination> {
+pub async fn run_client(cfg: PeerConfig, io: TcpStream, client_addr: SocketAddr, table: &impl Table) -> anyhow::Result<BmpMessageTermination> {
     let read = LengthDelimitedCodec::builder()
         .length_field_offset(1)
         .length_field_type::<u32>()
@@ -70,7 +71,7 @@ pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Tab
             anyhow::bail!("expected initiation message, got: {:?}", other);
         }
     };
-    let client_name = init_msg.sys_name.unwrap_or(client_addr.ip().to_string());
+    let client_name = cfg.name_override.or(init_msg.sys_name).unwrap_or(client_addr.ip().to_string());
     table.client_up(client_addr, Client { client_name }).await;
 
     loop {
@@ -99,8 +100,16 @@ pub async fn run_client(io: TcpStream, client_addr: SocketAddr, table: &impl Tab
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct PeerConfig {
+    pub name_override: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct BmpCollectorConfig {
     pub bind: SocketAddr,
+    #[serde(default)]
+    pub peers: HashMap<IpAddr, PeerConfig>,
+    pub default_peer_config: Option<PeerConfig>,
 }
 
 pub async fn run(cfg: BmpCollectorConfig, table: impl Table, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
@@ -114,19 +123,23 @@ pub async fn run(cfg: BmpCollectorConfig, table: impl Table, mut shutdown: tokio
 
                 let table = table.clone();
                 let mut shutdown = shutdown.clone();
-                running_tasks.push(tokio::spawn(async move {
-                    tokio::select! {
-                        res = run_client(io, client_addr, &table) => {
-                            match res {
-                                Err(e) => warn!("disconnected {} {}", client_addr, e),
-                                Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
+                if let Some(peer_cfg) = cfg.peers.get(&client_addr.ip()).or(cfg.default_peer_config.as_ref()).cloned() {
+                    running_tasks.push(tokio::spawn(async move {
+                        tokio::select! {
+                            res = run_client(peer_cfg, io, client_addr, &table) => {
+                                match res {
+                                    Err(e) => warn!("disconnected {} {}", client_addr, e),
+                                    Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
+                                }
                             }
-                        }
-                        _ = shutdown.changed() => {
-                        }
-                    };
-                    table.client_down(client_addr).await;
-                }));
+                            _ = shutdown.changed() => {
+                            }
+                        };
+                        table.client_down(client_addr).await;
+                    }));
+                } else {
+                    info!("unexpected connection from {}", client_addr);
+                }
             }
             _ = shutdown.changed() => {
                 join_all(running_tasks).await;
