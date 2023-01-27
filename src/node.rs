@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 use std::fmt::{Debug, Formatter};
 use bitvec::prelude::*;
 
-pub type Key = BitVec<u8, Msb0>;
+pub type Key = BitVec<usize, Lsb0>;
 
 #[derive(Debug)]
 pub struct Node<T> {
@@ -20,8 +20,8 @@ impl Debug for Bitmap {
         let field2_name = if self.is_end_node() { "internal2" } else { "external" };
         f.debug_struct("Bitmap")
             .field("is_end_node", &self.is_end_node())
-            .field("internal", &format!("{}", &self.bitmap.view_bits::<Msb0>()[..32]))
-            .field(field2_name, &format!("{}", &self.bitmap.view_bits::<Msb0>()[32..]))
+            .field("internal", &format!("{}", &self.bitmap.view_bits::<Lsb0>()[..32]))
+            .field(field2_name, &format!("{}", &self.bitmap.view_bits::<Lsb0>()[32..]))
             .finish()
     }
 }
@@ -29,10 +29,10 @@ impl Debug for Bitmap {
 impl Bitmap {
     #[inline]
     fn is_end_node(&self) -> bool {
-        self.bitmap.view_bits::<Msb0>()[0]
+        self.bitmap.view_bits::<Lsb0>()[0]
     }
     fn set_is_end_node(&mut self, is_end_node: bool) {
-        self.bitmap.view_bits_mut::<Msb0>().set(0, is_end_node);
+        self.bitmap.view_bits_mut::<Lsb0>().set(0, is_end_node);
     }
     #[inline]
     fn children_start_at(&self) -> usize {
@@ -43,22 +43,22 @@ impl Bitmap {
         if self.is_end_node() { 5 } else { 4 }
     }
 
-    fn children_bits_mut(&mut self) -> &mut BitSlice<u64, Msb0> {
+    fn children_bits_mut(&mut self) -> &mut BitSlice<u64, Lsb0> {
         let start = self.children_start_at();
-        self.bitmap.view_bits_mut::<Msb0>().index_mut(start..)
+        self.bitmap.view_bits_mut::<Lsb0>().index_mut(start..)
     }
-    fn children_bits(&self) -> &BitSlice<u64, Msb0> {
+    fn children_bits(&self) -> &BitSlice<u64, Lsb0> {
         let start = self.children_start_at();
-        self.bitmap.view_bits::<Msb0>().index(start..)
+        self.bitmap.view_bits::<Lsb0>().index(start..)
     }
 
-    fn results_bits_mut(&mut self) -> &mut BitSlice<u64, Msb0> {
+    fn results_bits_mut(&mut self) -> &mut BitSlice<u64, Lsb0> {
         let end = self.children_start_at();
-        self.bitmap.view_bits_mut::<Msb0>().index_mut(1..end)
+        self.bitmap.view_bits_mut::<Lsb0>().index_mut(1..end)
     }
-    fn results_bits(&self) -> &BitSlice<u64, Msb0> {
+    fn results_bits(&self) -> &BitSlice<u64, Lsb0> {
         let end = self.children_start_at();
-        self.bitmap.view_bits::<Msb0>().index(1..end)
+        self.bitmap.view_bits::<Lsb0>().index(1..end)
     }
 
     fn results_keys_with_prefix(&self, prefix: Key) -> impl Iterator<Item = Key> + '_ {
@@ -90,11 +90,11 @@ impl<T: Debug> Node<T> {
 
     fn children(&self) -> impl Iterator<Item = (Key, &Node<T>)> {
         let children_iter = self.children.iter().flat_map(|children| children.iter());
-        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Msb0>().iter().rev().take(5).rev().collect()).zip(children_iter)
+        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().take(5).collect()).zip(children_iter)
     }
     fn children_mut(&mut self) -> impl Iterator<Item = (Key, &mut Node<T>)> {
         let children_iter = self.children.iter_mut().flat_map(|children| children.iter_mut());
-        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Msb0>().iter().rev().take(5).rev().collect()).zip(children_iter)
+        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().rev().take(5).rev().collect()).zip(children_iter)
     }
 
     fn results(&self) -> impl Iterator<Item = (Key, &T)> {
@@ -107,14 +107,14 @@ impl<T: Debug> Node<T> {
     }
 
     fn get_child(&self, key: Key) -> Option<&Node<T>> {
-        let nibble: usize = key.load_be();
+        let nibble: usize = key.load_le();
         self.bitmap.children_bits()[nibble].then(|| {
             let vec_index = self.bitmap.children_bits()[..nibble].count_ones();
             &self.children.as_ref().unwrap()[vec_index]
         })
     }
     fn get_child_mut(&mut self, key: Key) -> Option<&mut Node<T>> {
-        let nibble: usize = key.load_be();
+        let nibble: usize = key.load_le();
         self.bitmap.children_bits()[nibble].then(|| {
             let vec_index = self.bitmap.children_bits()[..nibble].count_ones();
             &mut self.children.as_mut().unwrap()[vec_index]
@@ -216,7 +216,7 @@ impl<T: Debug> Node<T> {
 
 fn to_index(key: Key) -> usize {
     let leading_one = 2usize.pow(key.len() as u32);
-    let net_bits: usize = if key.is_empty() { 0 } else { key.load_be() };
+    let net_bits: usize = if key.is_empty() { 0 } else { key.load_le() };
     (leading_one + net_bits) - 1
 }
 
@@ -224,6 +224,6 @@ fn from_index(mut index: usize) -> Key {
     index += 1;
     let prefix_len = (std::mem::size_of::<usize>() as u32 * 8) - index.leading_zeros() - 1;
     let mut key = Key::new();
-    key.extend(index.view_bits::<Msb0>().iter().rev().take(prefix_len as usize).rev());
+    key.extend(index.view_bits::<Lsb0>().iter().take(prefix_len as usize));
     key
 }
