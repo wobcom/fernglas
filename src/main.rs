@@ -49,7 +49,7 @@ fn main() {
     println!("! {:?}", node.longest_match(&("192.168.0.1".parse().unwrap(), 32)));
     println!("! {:?}", node.longest_match(&("192.168.1.0".parse().unwrap(), 24)));
 
-    let results = node.iter().collect::<Vec<_>>();
+    let results = node.or_longer(&("128.0.0.0".parse().unwrap(), 1)).collect::<Vec<_>>();
 
     for (k,v) in results {
         println!("{:?} {:?}", k, v);

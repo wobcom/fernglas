@@ -319,18 +319,60 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
         })
         .flatten()
         .or_else(|| {
-            while {
+            loop {
                 if let Some(result) = self.exact(key.clone()) {
                     prefix.extend(&key);
                     return Some((prefix, result));
                 }
-                key.pop().is_some()
-            } {}
+                if key.pop().is_none() { break; }
+            }
             None
         })
     }
     pub fn longest_match(&self, key: &K) -> Option<(K, &T)> {
         self.longest_match_with_prefix(Key::new(), key.to_key())
+            .map(|(k, v)| (K::from_key_owned(k), v))
+    }
+
+    fn or_longer_with_prefix(&self, prefix: Key, mut key: Key) -> Box<dyn Iterator<Item = (Key, &T)> + '_> {
+        if key.len() > self.bitmap.results_capacity() {
+            let mut prefix = prefix.clone();
+            let remaining = key.split_off(5);
+            prefix.extend(&key);
+            if let Some(child) = self.get_child(key) {
+                child.or_longer_with_prefix(prefix, remaining)
+            } else {
+                Box::new(std::iter::empty())
+            }
+        } else {
+            let results_iter = {
+                let prefix = prefix.clone();
+                let key = key.clone();
+                self.results()
+                    .filter(move |(result_key, _)| {
+                        result_key.starts_with(&key)
+                    })
+                    .map(move |(result_key, val)| {
+                    let mut key = prefix.clone();
+                    key.extend(result_key);
+                    (key, val)
+                })
+            };
+            let children_iter = self.children()
+                .filter(move |(child_key, _)| {
+                    child_key.starts_with(&key)
+                })
+                .flat_map(move |(child_key, child)| {
+                    let mut key = prefix.clone();
+                    key.extend(child_key);
+                    child.iter_with_prefix(key)
+                });
+            let children_iter: Box<dyn Iterator<Item = (Key, &T)> + '_>  = Box::new(children_iter);
+            Box::new(results_iter.chain(children_iter))
+        }
+    }
+    pub fn or_longer(&self, key: &K) -> impl Iterator<Item = (K, &T)> + '_ {
+        self.or_longer_with_prefix(Key::new(), key.to_key())
             .map(|(k, v)| (K::from_key_owned(k), v))
     }
 }
