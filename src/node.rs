@@ -12,7 +12,7 @@ pub struct Node<T> {
 }
 
 struct Bitmap {
-    bitmap: u32,
+    bitmap: u64,
 }
 
 impl Debug for Bitmap {
@@ -20,8 +20,8 @@ impl Debug for Bitmap {
         let field2_name = if self.is_end_node() { "internal2" } else { "external" };
         f.debug_struct("Bitmap")
             .field("is_end_node", &self.is_end_node())
-            .field("internal", &format!("{}", &self.bitmap.view_bits::<Msb0>()[..16]))
-            .field(field2_name, &format!("{}", &self.bitmap.view_bits::<Msb0>()[16..]))
+            .field("internal", &format!("{}", &self.bitmap.view_bits::<Msb0>()[..32]))
+            .field(field2_name, &format!("{}", &self.bitmap.view_bits::<Msb0>()[32..]))
             .finish()
     }
 }
@@ -36,27 +36,27 @@ impl Bitmap {
     }
     #[inline]
     fn children_start_at(&self) -> usize {
-        if self.is_end_node() { 32 } else { 16 }
+        if self.is_end_node() { 64 } else { 32 }
     }
     #[inline]
     fn results_capacity(&self) -> usize {
-        if self.is_end_node() { 4 } else { 3 }
+        if self.is_end_node() { 5 } else { 4 }
     }
 
-    fn children_bits_mut(&mut self) -> &mut BitSlice<u32, Msb0> {
+    fn children_bits_mut(&mut self) -> &mut BitSlice<u64, Msb0> {
         let start = self.children_start_at();
         self.bitmap.view_bits_mut::<Msb0>().index_mut(start..)
     }
-    fn children_bits(&self) -> &BitSlice<u32, Msb0> {
+    fn children_bits(&self) -> &BitSlice<u64, Msb0> {
         let start = self.children_start_at();
         self.bitmap.view_bits::<Msb0>().index(start..)
     }
 
-    fn results_bits_mut(&mut self) -> &mut BitSlice<u32, Msb0> {
+    fn results_bits_mut(&mut self) -> &mut BitSlice<u64, Msb0> {
         let end = self.children_start_at();
         self.bitmap.view_bits_mut::<Msb0>().index_mut(1..end)
     }
-    fn results_bits(&self) -> &BitSlice<u32, Msb0> {
+    fn results_bits(&self) -> &BitSlice<u64, Msb0> {
         let end = self.children_start_at();
         self.bitmap.view_bits::<Msb0>().index(1..end)
     }
@@ -90,11 +90,11 @@ impl<T: Debug> Node<T> {
 
     fn children(&self) -> impl Iterator<Item = (Key, &Node<T>)> {
         let children_iter = self.children.iter().flat_map(|children| children.iter());
-        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Msb0>().iter().rev().take(4).rev().collect()).zip(children_iter)
+        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Msb0>().iter().rev().take(5).rev().collect()).zip(children_iter)
     }
     fn children_mut(&mut self) -> impl Iterator<Item = (Key, &mut Node<T>)> {
         let children_iter = self.children.iter_mut().flat_map(|children| children.iter_mut());
-        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Msb0>().iter().rev().take(4).rev().collect()).zip(children_iter)
+        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Msb0>().iter().rev().take(5).rev().collect()).zip(children_iter)
     }
 
     fn results(&self) -> impl Iterator<Item = (Key, &T)> {
@@ -158,7 +158,7 @@ impl<T: Debug> Node<T> {
             let vec_index = self.bitmap.results_bits()[..index].count_ones();
             results.insert(vec_index, value);
         } else {
-            let remaining = key.split_off(4);
+            let remaining = key.split_off(5);
             // insert into child node
             let child = self.get_or_insert_child(key);
             child.insert(remaining, value);
