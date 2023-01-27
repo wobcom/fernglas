@@ -77,6 +77,15 @@ impl<T: Debug> Default for Node<T> {
     fn default() -> Self { Node::new() }
 }
 
+fn children_mut<'a, T>(bitmap: &'a Bitmap, children: &'a mut Option<Box<Vec<Node<T>>>>) -> impl Iterator<Item = (Key, &'a mut Node<T>)> {
+    let children_iter = children.iter_mut().flat_map(|children| children.iter_mut());
+    bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().rev().take(5).rev().collect()).zip(children_iter)
+}
+fn results_mut<'a, T>(bitmap: &'a Bitmap, results: &'a mut Option<Box<Vec<T>>>) -> impl Iterator<Item = (Key, &'a mut T)> {
+    let results_iter = results.iter_mut().flat_map(|results| results.iter_mut());
+    bitmap.results_bits().iter_ones().map(from_index).zip(results_iter)
+}
+
 impl<T: Debug> Node<T> {
     pub fn new() -> Node<T> {
         let mut bitmap = Bitmap { bitmap: 0 };
@@ -92,17 +101,9 @@ impl<T: Debug> Node<T> {
         let children_iter = self.children.iter().flat_map(|children| children.iter());
         self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().take(5).collect()).zip(children_iter)
     }
-    fn children_mut(&mut self) -> impl Iterator<Item = (Key, &mut Node<T>)> {
-        let children_iter = self.children.iter_mut().flat_map(|children| children.iter_mut());
-        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().rev().take(5).rev().collect()).zip(children_iter)
-    }
 
     fn results(&self) -> impl Iterator<Item = (Key, &T)> {
         let results_iter = self.results.iter().flat_map(|results| results.iter());
-        self.bitmap.results_bits().iter_ones().map(from_index).zip(results_iter)
-    }
-    fn results_mut(&mut self) -> impl Iterator<Item = (Key, &mut T)> {
-        let results_iter = self.results.iter_mut().flat_map(|results| results.iter_mut());
         self.bitmap.results_bits().iter_ones().map(from_index).zip(results_iter)
     }
 
@@ -183,9 +184,30 @@ impl<T: Debug> Node<T> {
         let children_iter: Box<dyn Iterator<Item = (Key, &T)> + '_>  = Box::new(children_iter);
         results_iter.chain(children_iter)
     }
+    fn iter_mut_with_prefix(&mut self, prefix: Key) -> impl Iterator<Item = (Key, &mut T)> + '_ {
+        let results_iter = {
+            let prefix = prefix.clone();
+            results_mut(&self.bitmap, &mut self.results).map(move |(result_key, val)| {
+                let mut key = prefix.clone();
+                key.extend(result_key);
+                (key, val)
+            })
+        };
+        let children_iter = children_mut(&self.bitmap, &mut self.children)
+            .flat_map(move |(child_key, child)| {
+                let mut key = prefix.clone();
+                key.extend(child_key);
+                child.iter_mut_with_prefix(key)
+            });
+        let children_iter: Box<dyn Iterator<Item = (Key, &mut T)> + '_>  = Box::new(children_iter);
+        results_iter.chain(children_iter)
+    }
 
     pub fn iter(&self) -> impl Iterator<Item = (Key, &T)> + '_ {
         self.iter_with_prefix(Key::new())
+    }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (Key, &mut T)> + '_ {
+        self.iter_mut_with_prefix(Key::new())
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> + '_ {
@@ -194,6 +216,14 @@ impl<T: Debug> Node<T> {
             .flat_map(|children| children.iter())
             .flat_map(|child| child.values());
         let children_iter: Box<dyn Iterator<Item = &T> + '_> = Box::new(children_iter);
+        results_iter.chain(children_iter)
+    }
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> + '_ {
+        let results_iter = self.results.iter_mut().flat_map(|values| values.iter_mut());
+        let children_iter = self.children.iter_mut()
+            .flat_map(|children| children.iter_mut())
+            .flat_map(|child| child.values_mut());
+        let children_iter: Box<dyn Iterator<Item = &mut T> + '_> = Box::new(children_iter);
         results_iter.chain(children_iter)
     }
 
