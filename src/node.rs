@@ -165,6 +165,20 @@ impl<T: Debug> Node<T> {
             child.insert(remaining, value);
         }
     }
+    pub fn remove(&mut self, mut key: Key) -> Option<T> {
+        if key.len() <= self.bitmap.results_capacity() {
+            let index = to_index(key);
+            self.bitmap.results_bits()[index].then(|| {
+                self.bitmap.results_bits_mut().set(index, false);
+                let results = self.results.get_or_insert(Default::default());
+                let vec_index = self.bitmap.results_bits()[..index].count_ones();
+                results.remove(vec_index)
+            })
+        } else {
+            let remaining = key.split_off(5);
+            self.get_child_mut(key).and_then(|child| child.remove(remaining))
+        }
+    }
 
     fn iter_with_prefix(&self, prefix: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
         let results_iter = {
