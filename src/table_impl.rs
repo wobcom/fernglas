@@ -3,61 +3,21 @@ use regex::Regex;
 use std::pin::Pin;
 use futures_util::Stream;
 use futures_util::StreamExt;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
-use ipnet::{IpNet, Ipv4Net, Ipv6Net};
+use ipnet::IpNet;
 use std::collections::HashMap;
 use async_trait::async_trait;
 use tokio_stream::wrappers::ReceiverStream;
 use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelIterator;
-use bitvec::prelude::Msb0;
-use bitvec::view::BitView;
-use patricia_tree::PatriciaMap;
+use nibbletree::Node;
 use log::*;
 
 use crate::table::*;
 use crate::compressed_attrs::*;
 
-
-macro_rules! encode_net {
-    ($input:ident, $identifier:expr) => {
-        {
-            let mut key = vec![$identifier];
-            key.extend($input.addr().octets()[..].view_bits::<Msb0>()[..($input.prefix_len() as usize)].iter().map(|x| u8::from(*x.as_ref())));
-            key
-        }
-    }
-}
-macro_rules! decode_net {
-    ($input:ident, $bytes:expr, $net_variant:ident, $net_type:ty, $addr_type:ty) => {
-        {
-            let mut addr = [0u8; $bytes];
-            let addr_view = addr.view_bits_mut::<Msb0>();
-            for (i, bit) in $input[1..].iter().enumerate() {
-                *addr_view.get_mut(i).unwrap() = *bit != 0;
-            }
-            IpNet::$net_variant(<$net_type>::new(<$addr_type>::from(addr), ($input.len() - 1) as u8).unwrap())
-        }
-    }
-}
-
-fn to_key(net: &IpNet) -> Vec<u8> {
-    match net {
-        IpNet::V4(net) => encode_net!(net, 4),
-        IpNet::V6(net) => encode_net!(net, 6),
-    }
-}
-
-fn from_key(key: &[u8]) -> IpNet {
-    match key[0] {
-        4 => decode_net!(key, 4, V4, Ipv4Net, Ipv4Addr),
-        6 => decode_net!(key, 16, V6, Ipv6Net, Ipv6Addr),
-        _ => panic!("invalid key encoding"),
-    }
-}
-
-type RouteMap = Arc<Mutex<PatriciaMap<Arc<CompressedRouteAttrs>>>>;
+type RouteMap = Arc<Mutex<Node<IpNet, Arc<CompressedRouteAttrs>>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
@@ -104,13 +64,13 @@ impl Table for InMemoryTable {
         let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.insert(to_key(&net), compressed);
+        table.insert(&net, compressed);
     }
 
     async fn withdraw_route(&self, net: IpNet, table: TableSelector) {
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.remove(to_key(&net));
+        table.remove(&net);
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
@@ -147,7 +107,7 @@ impl Table for InMemoryTable {
                 NetQuery::Exact(net) => {
                     tables.into_par_iter().filter_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
-                        table.get(to_key(&net))
+                        table.exact(&net)
                             .map(|has_route| (table_sel.clone(), net.clone(), has_route.clone()))
                     })
                     .filter(nets_filter_fn)
@@ -157,8 +117,8 @@ impl Table for InMemoryTable {
                     tables.into_par_iter().filter_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
 
-                        table.get_longest_common_prefix(&to_key(&net))
-                            .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
+                        table.longest_match(&net)
+                            .map(move |(net, route)| (table_sel.clone(), net, route.clone()))
                             .filter(&nets_filter_fn)
                     })
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
@@ -167,8 +127,8 @@ impl Table for InMemoryTable {
                     tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
 
-                        table.common_prefixes(&to_key(&net))
-                            .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
+                        table.matches(&net)
+                            .map(move |(net, route)| (table_sel.clone(), net, route.clone()))
                         .filter(&nets_filter_fn)
                         .take(max_results_per_table)
                         .collect::<Vec<_>>()
@@ -180,8 +140,8 @@ impl Table for InMemoryTable {
                     tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
 
-                        table.iter_prefix(&to_key(&net))
-                            .map(move |(net, route)| (table_sel.clone(), from_key(&net), route.clone()))
+                        table.or_longer(&net)
+                            .map(move |(net, route)| (table_sel.clone(), net, route.clone()))
                         .filter(&nets_filter_fn)
                         .take(max_results_per_table)
                         .collect::<Vec<_>>()

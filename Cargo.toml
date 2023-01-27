@@ -2,6 +2,7 @@
 name = "fernglas"
 version = "0.1.0"
 edition = "2021"
+default-run = "fernglas"
 
 [dependencies]
 anyhow = "1.0.68"
@@ -15,7 +16,6 @@ futures-util = "0.3.25"
 ipnet = { version = "2.7.1", features = ["serde"] }
 log = "0.4.17"
 mimalloc = { version = "0.1.34", optional = true }
-patricia_tree = { version = "0.5.0", features = ["binary-format"] }
 rayon = "1.6.1"
 regex = "1.7.1"
 serde = { version = "1.0.152", features = ["derive"] }
@@ -26,6 +26,7 @@ tokio-stream = "0.1.11"
 tokio-util = { version = "0.7.4", features = ["codec"] }
 weak-table = "0.3.2"
 zettabgp = { git = "https://github.com/wobcom/zettabgp", branch = "more-capabilities" }
+nibbletree = { path = "./nibbletree", features = ["ipnet"] }
 
 [[bin]]
 name = "fernglas-configcheck"
