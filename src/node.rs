@@ -2,6 +2,8 @@ use std::ops::{Index, IndexMut};
 use std::fmt::{Debug, Formatter};
 use bitvec::prelude::*;
 
+pub type Key = BitVec<u8, Msb0>;
+
 #[derive(Debug)]
 pub struct Node<T> {
     results: Option<Box<Vec<T>>>,
@@ -25,15 +27,18 @@ impl Debug for Bitmap {
 }
 
 impl Bitmap {
+    #[inline]
     fn is_end_node(&self) -> bool {
         self.bitmap.view_bits::<Msb0>()[0]
     }
     fn set_is_end_node(&mut self, is_end_node: bool) {
         self.bitmap.view_bits_mut::<Msb0>().set(0, is_end_node);
     }
+    #[inline]
     fn children_start_at(&self) -> usize {
         if self.is_end_node() { 32 } else { 16 }
     }
+    #[inline]
     fn results_capacity(&self) -> usize {
         if self.is_end_node() { 4 } else { 3 }
     }
@@ -56,15 +61,14 @@ impl Bitmap {
         self.bitmap.view_bits::<Msb0>().index(1..end)
     }
 
-    fn results_keys_with_prefix(&self, prefix: Vec<u8>) -> impl Iterator<Item = (Vec<u8>, u32)> + '_ {
+    fn results_keys_with_prefix(&self, prefix: Key) -> impl Iterator<Item = Key> + '_ {
         self.results_bits()
             .iter_ones()
             .map(from_index)
-            .map(move |(nibble, result_prefix_len)| {
+            .map(move |result_key| {
                 let mut key = prefix.clone();
-                key.push(nibble);
-                let prefix_len = prefix.len() as u32 * 4 + result_prefix_len;
-                (key, prefix_len)
+                key.extend(result_key);
+                key
             })
     }
 }
@@ -84,33 +88,33 @@ impl<T: Debug> Node<T> {
         }
     }
 
-    fn children(&self) -> impl Iterator<Item = (u8, &Node<T>)> {
+    fn children(&self) -> impl Iterator<Item = (Key, &Node<T>)> {
         let children_iter = self.children.iter().flat_map(|children| children.iter());
-        self.bitmap.children_bits().iter_ones().map(|x| x as u8).zip(children_iter)
+        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Msb0>().iter().rev().take(4).rev().collect()).zip(children_iter)
     }
-    fn children_mut(&mut self) -> impl Iterator<Item = (u8, &mut Node<T>)> {
+    fn children_mut(&mut self) -> impl Iterator<Item = (Key, &mut Node<T>)> {
         let children_iter = self.children.iter_mut().flat_map(|children| children.iter_mut());
-        self.bitmap.children_bits().iter_ones().map(|x| x as u8).zip(children_iter)
+        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Msb0>().iter().rev().take(4).rev().collect()).zip(children_iter)
     }
 
-    fn results(&self) -> impl Iterator<Item = ((u8, u32), &T)> {
+    fn results(&self) -> impl Iterator<Item = (Key, &T)> {
         let results_iter = self.results.iter().flat_map(|results| results.iter());
         self.bitmap.results_bits().iter_ones().map(from_index).zip(results_iter)
     }
-    fn results_mut(&mut self) -> impl Iterator<Item = ((u8, u32), &mut T)> {
+    fn results_mut(&mut self) -> impl Iterator<Item = (Key, &mut T)> {
         let results_iter = self.results.iter_mut().flat_map(|results| results.iter_mut());
         self.bitmap.results_bits().iter_ones().map(from_index).zip(results_iter)
     }
 
-    fn get_child(&self, nibble: u8) -> Option<&Node<T>> {
-        let nibble = nibble as usize;
+    fn get_child(&self, key: Key) -> Option<&Node<T>> {
+        let nibble: usize = key.load_be();
         self.bitmap.children_bits()[nibble].then(|| {
             let vec_index = self.bitmap.children_bits()[..nibble].count_ones();
             &self.children.as_ref().unwrap()[vec_index]
         })
     }
-    fn get_child_mut(&mut self, nibble: u8) -> Option<&mut Node<T>> {
-        let nibble = nibble as usize;
+    fn get_child_mut(&mut self, key: Key) -> Option<&mut Node<T>> {
+        let nibble: usize = key.load_be();
         self.bitmap.children_bits()[nibble].then(|| {
             let vec_index = self.bitmap.children_bits()[..nibble].count_ones();
             &mut self.children.as_mut().unwrap()[vec_index]
@@ -126,63 +130,62 @@ impl<T: Debug> Node<T> {
         self.bitmap = Bitmap { bitmap: 0 };
         self.bitmap.set_is_end_node(false);
 
-        for ((nibble, prefix_len), value) in results {
-            self.insert(&[nibble], prefix_len, value);
+        for (key, value) in results {
+            self.insert(key, value);
         }
     }
-    fn get_or_insert_child(&mut self, nibble: u8) -> &mut Node<T> {
+    fn get_or_insert_child(&mut self, key: Key) -> &mut Node<T> {
         self.convert_to_normal();
 
         {
-            let nibble = nibble as usize;
+            let nibble: usize = key.load_be();
             if !self.bitmap.children_bits()[nibble] {
                 self.bitmap.children_bits_mut().set(nibble, true);
-                let mut children = self.children.get_or_insert(Default::default());
+                let children = self.children.get_or_insert(Default::default());
                 let vec_index = self.bitmap.children_bits()[..nibble].count_ones();
                 children.insert(vec_index, Node::new());
             }
         }
-        self.get_child_mut(nibble).unwrap()
+        self.get_child_mut(key).unwrap()
     }
 
-    pub fn insert(&mut self, nibbles: &[u8], prefix_len: u32, value: T) {
-        if prefix_len as usize <= self.bitmap.results_capacity() {
+    pub fn insert(&mut self, mut key: Key, value: T) {
+        if key.len() <= self.bitmap.results_capacity() {
             // capacity is suffcient, insert into local node
-            let nibble = *nibbles.get(0).unwrap_or(&0);
-            let index = to_index(nibble, prefix_len);
+            let index = to_index(key);
             self.bitmap.results_bits_mut().set(index, true);
-            let mut results = self.results.get_or_insert(Default::default());
+            let results = self.results.get_or_insert(Default::default());
             let vec_index = self.bitmap.results_bits()[..index].count_ones();
             results.insert(vec_index, value);
         } else {
+            let remaining = key.split_off(4);
             // insert into child node
-            let child = self.get_or_insert_child(nibbles[0]);
-            child.insert(&nibbles[1..], prefix_len - 4, value);
+            let child = self.get_or_insert_child(key);
+            child.insert(remaining, value);
         }
     }
 
-    fn iter_with_prefix(&self, prefix: Vec<u8>) -> impl Iterator<Item = ((Vec<u8>, u32), &T)> + '_ {
+    fn iter_with_prefix(&self, prefix: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
         let results_iter = {
             let prefix = prefix.clone();
-            self.results().map(move |((nibble, result_prefix_len), val)| {
+            self.results().map(move |(result_key, val)| {
                 let mut key = prefix.clone();
-                key.push(nibble);
-                let prefix_len = prefix.len() as u32 * 4 + result_prefix_len;
-                ((key, prefix_len), val)
+                key.extend(result_key);
+                (key, val)
             })
         };
         let children_iter = self.children()
-            .flat_map(move |(nibble, child)| {
+            .flat_map(move |(child_key, child)| {
                 let mut key = prefix.clone();
-                key.push(nibble);
+                key.extend(child_key);
                 child.iter_with_prefix(key)
             });
-        let children_iter: Box<dyn Iterator<Item = ((Vec<u8>, u32), &T)> + '_>  = Box::new(children_iter);
+        let children_iter: Box<dyn Iterator<Item = (Key, &T)> + '_>  = Box::new(children_iter);
         results_iter.chain(children_iter)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = ((Vec<u8>, u32), &T)> + '_ {
-        self.iter_with_prefix(vec![])
+    pub fn iter(&self) -> impl Iterator<Item = (Key, &T)> + '_ {
+        self.iter_with_prefix(Key::new())
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> + '_ {
@@ -194,34 +197,33 @@ impl<T: Debug> Node<T> {
         results_iter.chain(children_iter)
     }
 
-    fn keys_with_prefix<'a>(&'a self, prefix: Vec<u8>) -> impl Iterator<Item = (Vec<u8>, u32)> + '_ {
+    fn keys_with_prefix<'a>(&'a self, prefix: Key) -> impl Iterator<Item = Key> + '_ {
         let results_keys_iter = self.bitmap.results_keys_with_prefix(prefix.clone());
         let children_keys_iter = self.children()
-            .flat_map(move |(nibble, child)| {
+            .flat_map(move |(child_key, child)| {
                 let mut key = prefix.clone();
-                key.push(nibble);
-                println!("child {:?}", key);
+                key.extend(child_key);
                 child.keys_with_prefix(key)
             });
-        let children_keys_iter: Box<dyn Iterator<Item = (Vec<u8>, u32)> + '_> = Box::new(children_keys_iter);
+        let children_keys_iter: Box<dyn Iterator<Item = Key> + '_> = Box::new(children_keys_iter);
         results_keys_iter.chain(children_keys_iter)
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = (Vec<u8>, u32)> + '_ {
-        self.keys_with_prefix(vec![])
+    pub fn keys(&self) -> impl Iterator<Item = Key> + '_ {
+        self.keys_with_prefix(Key::new())
     }
 }
 
-fn to_index(nibble: u8, prefix_len: u32) -> usize {
-    let leading_one = 2usize.pow(prefix_len as u32);
-    let net_bits = nibble >> (4 - prefix_len as usize);
-    (leading_one + net_bits as usize) - 1
+fn to_index(key: Key) -> usize {
+    let leading_one = 2usize.pow(key.len() as u32);
+    let net_bits: usize = if key.is_empty() { 0 } else { key.load_be() };
+    (leading_one + net_bits) - 1
 }
 
-fn from_index(mut index: usize) -> (u8, u32) {
+fn from_index(mut index: usize) -> Key {
     index += 1;
     let prefix_len = (std::mem::size_of::<usize>() as u32 * 8) - index.leading_zeros() - 1;
-    index -= 2usize.pow(prefix_len);
-    index <<= 4 - prefix_len as u32;
-    (index as u8, prefix_len)
+    let mut key = Key::new();
+    key.extend(index.view_bits::<Msb0>().iter().rev().take(prefix_len as usize).rev());
+    key
 }
