@@ -12,17 +12,24 @@ pub struct Node<K, T> {
     _key_type: PhantomData<K>,
 }
 
+#[derive(Default)]
 struct Bitmap {
-    bitmap: u64,
+    bitmap: BitmapType,
 }
+
+type BitmapType = u64;
+const RESULTS_BITS_END_NODE: usize = std::mem::size_of::<BitmapType>().ilog2() as usize - 1;
+const RESULTS_BITS: usize = RESULTS_BITS_END_NODE - 1;
+const CHILDREN_START_END_NODE: usize = 2_usize.pow(RESULTS_BITS_END_NODE as u32 + 1);
+const CHILDREN_START: usize = 2_usize.pow(RESULTS_BITS as u32 + 1);
 
 impl Debug for Bitmap {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         let field2_name = if self.is_end_node() { "internal2" } else { "external" };
         f.debug_struct("Bitmap")
             .field("is_end_node", &self.is_end_node())
-            .field("internal", &format!("{}", &self.bitmap.view_bits::<Lsb0>()[..32]))
-            .field(field2_name, &format!("{}", &self.bitmap.view_bits::<Lsb0>()[32..]))
+            .field("internal", &format!("{}", &self.bitmap.view_bits::<Lsb0>()[..CHILDREN_START]))
+            .field(field2_name, &format!("{}", &self.bitmap.view_bits::<Lsb0>()[CHILDREN_START..]))
             .finish()
     }
 }
@@ -37,27 +44,27 @@ impl Bitmap {
     }
     #[inline]
     fn children_start_at(&self) -> usize {
-        if self.is_end_node() { 64 } else { 32 }
+        if self.is_end_node() { CHILDREN_START_END_NODE } else { CHILDREN_START }
     }
     #[inline]
     fn results_capacity(&self) -> usize {
-        if self.is_end_node() { 5 } else { 4 }
+        if self.is_end_node() { RESULTS_BITS_END_NODE } else { RESULTS_BITS }
     }
 
-    fn children_bits_mut(&mut self) -> &mut BitSlice<u64, Lsb0> {
+    fn children_bits_mut(&mut self) -> &mut BitSlice<BitmapType, Lsb0> {
         let start = self.children_start_at();
         self.bitmap.view_bits_mut::<Lsb0>().index_mut(start..)
     }
-    fn children_bits(&self) -> &BitSlice<u64, Lsb0> {
+    fn children_bits(&self) -> &BitSlice<BitmapType, Lsb0> {
         let start = self.children_start_at();
         self.bitmap.view_bits::<Lsb0>().index(start..)
     }
 
-    fn results_bits_mut(&mut self) -> &mut BitSlice<u64, Lsb0> {
+    fn results_bits_mut(&mut self) -> &mut BitSlice<BitmapType, Lsb0> {
         let end = self.children_start_at();
         self.bitmap.view_bits_mut::<Lsb0>().index_mut(1..end)
     }
-    fn results_bits(&self) -> &BitSlice<u64, Lsb0> {
+    fn results_bits(&self) -> &BitSlice<BitmapType, Lsb0> {
         let end = self.children_start_at();
         self.bitmap.view_bits::<Lsb0>().index(1..end)
     }
@@ -80,7 +87,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Default for Node<K, T> {
 
 fn children_mut<'a, K, T>(bitmap: &'a Bitmap, children: &'a mut Option<Box<Vec<Node<K, T>>>>) -> impl Iterator<Item = (Key, &'a mut Node<K, T>)> {
     let children_iter = children.iter_mut().flat_map(|children| children.iter_mut());
-    bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().rev().take(5).rev().collect()).zip(children_iter)
+    bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().rev().take(RESULTS_BITS_END_NODE).rev().collect()).zip(children_iter)
 }
 fn results_mut<'a, T>(bitmap: &'a Bitmap, results: &'a mut Option<Box<Vec<T>>>) -> impl Iterator<Item = (Key, &'a mut T)> {
     let results_iter = results.iter_mut().flat_map(|results| results.iter_mut());
@@ -103,7 +110,7 @@ fn from_index(mut index: usize) -> Key {
 
 impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
     pub fn new() -> Node<K, T> {
-        let mut bitmap = Bitmap { bitmap: 0 };
+        let mut bitmap: Bitmap = Default::default();
         bitmap.set_is_end_node(true);
         Node {
             results: None,
@@ -115,7 +122,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
 
     fn children(&self) -> impl Iterator<Item = (Key, &Node<K, T>)> {
         let children_iter = self.children.iter().flat_map(|children| children.iter());
-        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().take(5).collect()).zip(children_iter)
+        self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().take(RESULTS_BITS_END_NODE).collect()).zip(children_iter)
     }
 
     fn results(&self) -> impl Iterator<Item = (Key, &T)> {
@@ -146,7 +153,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
         let results_iter = self.results.take().into_iter().flat_map(|results| results.into_iter());
         let results = self.bitmap.results_bits().iter_ones().map(from_index).zip(results_iter).collect::<Vec<_>>();
 
-        self.bitmap = Bitmap { bitmap: 0 };
+        self.bitmap = Default::default();
         self.bitmap.set_is_end_node(false);
 
         for (key, value) in results {
@@ -157,7 +164,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
         self.convert_to_normal();
 
         {
-            let nibble: usize = key.load_be();
+            let nibble: usize = key.load_le();
             if !self.bitmap.children_bits()[nibble] {
                 self.bitmap.children_bits_mut().set(nibble, true);
                 let children = self.children.get_or_insert(Default::default());
@@ -177,7 +184,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             let vec_index = self.bitmap.results_bits()[..index].count_ones();
             results.insert(vec_index, value);
         } else {
-            let remaining = key.split_off(5);
+            let remaining = key.split_off(RESULTS_BITS_END_NODE);
             // insert into child node
             let child = self.get_or_insert_child(key);
             child.insert_key(remaining, value);
@@ -191,12 +198,12 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             let index = to_index(key);
             self.bitmap.results_bits()[index].then(|| {
                 self.bitmap.results_bits_mut().set(index, false);
-                let results = self.results.get_or_insert(Default::default());
+                let mut results = self.results.get_or_insert(Default::default());
                 let vec_index = self.bitmap.results_bits()[..index].count_ones();
                 results.remove(vec_index)
             })
         } else {
-            let remaining = key.split_off(5);
+            let remaining = key.split_off(RESULTS_BITS_END_NODE);
             self.get_child_mut(key).and_then(|child| child.remove_key(remaining))
         }
     }
@@ -284,7 +291,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             .map(K::from_key_owned)
     }
 
-    pub fn exact(&self, mut key: Key) -> Option<&T> {
+    pub fn exact_key(&self, mut key: Key) -> Option<&T> {
         if key.len() <= self.bitmap.results_capacity() {
             let index = to_index(key);
             self.bitmap.results_bits()[index].then(|| {
@@ -292,11 +299,14 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
                 &self.results.as_ref().unwrap()[vec_index]
             })
         } else {
-            let remaining = key.split_off(5);
-            self.get_child(key).and_then(|child| child.exact(remaining))
+            let remaining = key.split_off(RESULTS_BITS_END_NODE);
+            self.get_child(key).and_then(|child| child.exact_key(remaining))
         }
     }
-    pub fn exact_mut(&mut self, mut key: Key) -> Option<&mut T> {
+    pub fn exact(&self, key: &K) -> Option<&T> {
+        self.exact_key(key.to_key())
+    }
+    pub fn exact_mut_key(&mut self, mut key: Key) -> Option<&mut T> {
         if key.len() <= self.bitmap.results_capacity() {
             let index = to_index(key);
             self.bitmap.results_bits()[index].then(|| {
@@ -304,23 +314,26 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
                 &mut self.results.as_mut().unwrap()[vec_index]
             })
         } else {
-            let remaining = key.split_off(5);
-            self.get_child_mut(key).and_then(|child| child.exact_mut(remaining))
+            let remaining = key.split_off(RESULTS_BITS_END_NODE);
+            self.get_child_mut(key).and_then(|child| child.exact_mut_key(remaining))
         }
+    }
+    pub fn exact_mut(&mut self, key: &K) -> Option<&mut T> {
+        self.exact_mut_key(key.to_key())
     }
 
     fn longest_match_with_prefix(&self, mut prefix: Key, mut key: Key) -> Option<(Key, &T)> {
         (key.len() > self.bitmap.results_capacity()).then(|| {
             let mut prefix = prefix.clone();
             let mut key = key.clone();
-            let remaining = key.split_off(5);
+            let remaining = key.split_off(RESULTS_BITS_END_NODE);
             prefix.extend(&key);
             self.get_child(key).and_then(|child| child.longest_match_with_prefix(prefix, remaining))
         })
         .flatten()
         .or_else(|| {
             loop {
-                if let Some(result) = self.exact(key.clone()) {
+                if let Some(result) = self.exact_key(key.clone()) {
                     prefix.extend(&key);
                     return Some((prefix, result));
                 }
@@ -353,10 +366,10 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
                         result_key.starts_with(&key)
                     })
                     .map(move |(result_key, val)| {
-                    let mut key = prefix.clone();
-                    key.extend(result_key);
-                    (key, val)
-                })
+                        let mut key = prefix.clone();
+                        key.extend(result_key);
+                        (key, val)
+                    })
             };
             let children_iter = self.children()
                 .filter(move |(child_key, _)| {
