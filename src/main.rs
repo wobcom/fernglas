@@ -3,7 +3,7 @@ use nibbletree::Node;
 
 fn main() {
 
-    let mut node = Node::new();
+    let mut node = Node::default();
 
     let addrs: Vec<((IpAddr, usize), &str)> = vec![
         (("0.0.0.0".parse().unwrap(), 0), "foo"),

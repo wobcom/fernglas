@@ -1,17 +1,10 @@
 use std::ops::{Index, IndexMut};
 use std::fmt::{Debug, Formatter};
-use std::marker::PhantomData;
 use thin_vec::ThinVec;
 use bitvec::prelude::*;
-use super::{Key, FromKey, ToKey};
 
-#[derive(Debug)]
-pub struct Node<K, T> {
-    results: Option<ThinVec<T>>,
-    children: Option<ThinVec<Node<K, T>>>,
-    bitmap: Bitmap,
-    _key_type: PhantomData<K>,
-}
+pub type Key = BitVec<usize, Lsb0>;
+pub type KeyRef<'a> = &'a BitSlice<usize, Lsb0>;
 
 #[derive(Default)]
 struct Bitmap {
@@ -82,11 +75,26 @@ impl Bitmap {
     }
 }
 
-impl<K: FromKey + ToKey + Debug, T: Debug> Default for Node<K, T> {
-    fn default() -> Self { Node::new() }
+#[derive(Debug)]
+pub struct Node<T> {
+    results: Option<ThinVec<T>>,
+    children: Option<ThinVec<Node<T>>>,
+    bitmap: Bitmap,
 }
 
-fn children_mut<'a, K, T>(bitmap: &'a Bitmap, children: &'a mut Option<ThinVec<Node<K, T>>>) -> impl Iterator<Item = (Key, &'a mut Node<K, T>)> {
+impl<T> Default for Node<T> {
+    fn default() -> Self {
+        let mut bitmap: Bitmap = Default::default();
+        bitmap.set_is_end_node(true);
+        Node {
+            results: None,
+            children: None,
+            bitmap,
+        }
+    }
+}
+
+fn children_mut<'a, T>(bitmap: &'a Bitmap, children: &'a mut Option<ThinVec<Node<T>>>) -> impl Iterator<Item = (Key, &'a mut Node<T>)> {
     let children_iter = children.iter_mut().flat_map(|children| children.iter_mut());
     bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().rev().take(RESULTS_BITS_END_NODE).rev().collect()).zip(children_iter)
 }
@@ -109,19 +117,8 @@ fn from_index(mut index: usize) -> Key {
     key
 }
 
-impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
-    pub fn new() -> Node<K, T> {
-        let mut bitmap: Bitmap = Default::default();
-        bitmap.set_is_end_node(true);
-        Node {
-            results: None,
-            children: None,
-            bitmap,
-            _key_type: Default::default(),
-        }
-    }
-
-    fn children(&self) -> impl Iterator<Item = (Key, &Node<K, T>)> {
+impl<T: Debug> Node<T> {
+    fn children(&self) -> impl Iterator<Item = (Key, &Node<T>)> {
         let children_iter = self.children.iter().flat_map(|children| children.iter());
         self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().take(RESULTS_BITS_END_NODE).collect()).zip(children_iter)
     }
@@ -131,7 +128,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
         self.bitmap.results_bits().iter_ones().map(from_index).zip(results_iter)
     }
 
-    fn get_child(&self, key: Key) -> Option<&Node<K, T>> {
+    fn get_child(&self, key: Key) -> Option<&Node<T>> {
         if self.bitmap.is_end_node() { return None; }
         let nibble: usize = key.load_le();
         self.bitmap.children_bits()[nibble].then(|| {
@@ -139,7 +136,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             &self.children.as_ref().unwrap()[vec_index]
         })
     }
-    fn get_child_mut(&mut self, key: Key) -> Option<&mut Node<K, T>> {
+    fn get_child_mut(&mut self, key: Key) -> Option<&mut Node<T>> {
         if self.bitmap.is_end_node() { return None; }
         let nibble: usize = key.load_le();
         self.bitmap.children_bits()[nibble].then(|| {
@@ -158,10 +155,10 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
         self.bitmap.set_is_end_node(false);
 
         for (key, value) in results {
-            self.insert_key(key, value);
+            self.insert(key, value);
         }
     }
-    fn get_or_insert_child(&mut self, key: Key) -> &mut Node<K, T> {
+    fn get_or_insert_child(&mut self, key: Key) -> &mut Node<T> {
         self.convert_to_normal();
 
         {
@@ -170,13 +167,13 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
                 self.bitmap.children_bits_mut().set(nibble, true);
                 let children = self.children.get_or_insert(Default::default());
                 let vec_index = self.bitmap.children_bits()[..nibble].count_ones();
-                children.insert(vec_index, Node::new());
+                children.insert(vec_index, Node::default());
             }
         }
         self.get_child_mut(key).unwrap()
     }
 
-    fn insert_key(&mut self, mut key: Key, value: T) {
+    pub fn insert(&mut self, mut key: Key, value: T) {
         if key.len() <= self.bitmap.results_capacity() {
             // capacity is suffcient, insert into local node
             let index = to_index(key);
@@ -188,28 +185,22 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             let remaining = key.split_off(RESULTS_BITS_END_NODE);
             // insert into child node
             let child = self.get_or_insert_child(key);
-            child.insert_key(remaining, value);
+            child.insert(remaining, value);
         }
     }
-    pub fn insert(&mut self, key: &K, value: T) {
-        self.insert_key(key.to_key(), value)
-    }
-    fn remove_key(&mut self, mut key: Key) -> Option<T> {
+    pub fn remove(&mut self, mut key: Key) -> Option<T> {
         if key.len() <= self.bitmap.results_capacity() {
             let index = to_index(key);
             self.bitmap.results_bits()[index].then(|| {
                 self.bitmap.results_bits_mut().set(index, false);
-                let mut results = self.results.get_or_insert(Default::default());
+                let results = self.results.get_or_insert(Default::default());
                 let vec_index = self.bitmap.results_bits()[..index].count_ones();
                 results.remove(vec_index)
             })
         } else {
             let remaining = key.split_off(RESULTS_BITS_END_NODE);
-            self.get_child_mut(key).and_then(|child| child.remove_key(remaining))
+            self.get_child_mut(key).and_then(|child| child.remove(remaining))
         }
-    }
-    pub fn remove(&mut self, key: &K) -> Option<T> {
-        self.remove_key(key.to_key())
     }
 
     fn iter_with_prefix(&self, prefix: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
@@ -249,13 +240,11 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
         results_iter.chain(children_iter)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (K, &T)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = (Key, &T)> + '_ {
         self.iter_with_prefix(Key::new())
-            .map(|(k, v)| (K::from_key_owned(k), v))
     }
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut T)> + '_ {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (Key, &mut T)> + '_ {
         self.iter_mut_with_prefix(Key::new())
-            .map(|(k, v)| (K::from_key_owned(k), v))
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> + '_ {
@@ -287,12 +276,11 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
         results_keys_iter.chain(children_keys_iter)
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
+    pub fn keys(&self) -> impl Iterator<Item = Key> + '_ {
         self.keys_with_prefix(Key::new())
-            .map(K::from_key_owned)
     }
 
-    pub fn exact_key(&self, mut key: Key) -> Option<&T> {
+    pub fn exact(&self, mut key: Key) -> Option<&T> {
         if key.len() <= self.bitmap.results_capacity() {
             let index = to_index(key);
             self.bitmap.results_bits()[index].then(|| {
@@ -301,13 +289,10 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             })
         } else {
             let remaining = key.split_off(RESULTS_BITS_END_NODE);
-            self.get_child(key).and_then(|child| child.exact_key(remaining))
+            self.get_child(key).and_then(|child| child.exact(remaining))
         }
     }
-    pub fn exact(&self, key: &K) -> Option<&T> {
-        self.exact_key(key.to_key())
-    }
-    pub fn exact_mut_key(&mut self, mut key: Key) -> Option<&mut T> {
+    pub fn exact_mut(&mut self, mut key: Key) -> Option<&mut T> {
         if key.len() <= self.bitmap.results_capacity() {
             let index = to_index(key);
             self.bitmap.results_bits()[index].then(|| {
@@ -316,11 +301,8 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             })
         } else {
             let remaining = key.split_off(RESULTS_BITS_END_NODE);
-            self.get_child_mut(key).and_then(|child| child.exact_mut_key(remaining))
+            self.get_child_mut(key).and_then(|child| child.exact_mut(remaining))
         }
-    }
-    pub fn exact_mut(&mut self, key: &K) -> Option<&mut T> {
-        self.exact_mut_key(key.to_key())
     }
 
     fn longest_match_with_prefix(&self, mut prefix: Key, mut key: Key) -> Option<(Key, &T)> {
@@ -334,7 +316,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
         .flatten()
         .or_else(|| {
             loop {
-                if let Some(result) = self.exact_key(key.clone()) {
+                if let Some(result) = self.exact(key.clone()) {
                     prefix.extend(&key);
                     return Some((prefix, result));
                 }
@@ -343,9 +325,8 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             None
         })
     }
-    pub fn longest_match(&self, key: &K) -> Option<(K, &T)> {
-        self.longest_match_with_prefix(Key::new(), key.to_key())
-            .map(|(k, v)| (K::from_key_owned(k), v))
+    pub fn longest_match(&self, key: Key) -> Option<(Key, &T)> {
+        self.longest_match_with_prefix(Key::new(), key)
     }
 
     fn or_longer_with_prefix(&self, prefix: Key, mut key: Key) -> Box<dyn Iterator<Item = (Key, &T)> + '_> {
@@ -385,8 +366,7 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Node<K, T> {
             Box::new(results_iter.chain(children_iter))
         }
     }
-    pub fn or_longer(&self, key: &K) -> impl Iterator<Item = (K, &T)> + '_ {
-        self.or_longer_with_prefix(Key::new(), key.to_key())
-            .map(|(k, v)| (K::from_key_owned(k), v))
+    pub fn or_longer(&self, key: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
+        self.or_longer_with_prefix(Key::new(), key)
     }
 }
