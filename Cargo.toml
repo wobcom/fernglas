@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 bitvec = "1.0.1"
+thin-vec = "0.2.10"

@@ -1,13 +1,14 @@
 use std::ops::{Index, IndexMut};
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
+use thin_vec::ThinVec;
 use bitvec::prelude::*;
 use super::{Key, FromKey, ToKey};
 
 #[derive(Debug)]
 pub struct Node<K, T> {
-    results: Option<Box<Vec<T>>>,
-    children: Option<Box<Vec<Node<K, T>>>>,
+    results: Option<ThinVec<T>>,
+    children: Option<ThinVec<Node<K, T>>>,
     bitmap: Bitmap,
     _key_type: PhantomData<K>,
 }
@@ -18,7 +19,7 @@ struct Bitmap {
 }
 
 type BitmapType = u64;
-const RESULTS_BITS_END_NODE: usize = std::mem::size_of::<BitmapType>().ilog2() as usize - 1;
+const RESULTS_BITS_END_NODE: usize = 5;
 const RESULTS_BITS: usize = RESULTS_BITS_END_NODE - 1;
 const CHILDREN_START_END_NODE: usize = 2_usize.pow(RESULTS_BITS_END_NODE as u32 + 1);
 const CHILDREN_START: usize = 2_usize.pow(RESULTS_BITS as u32 + 1);
@@ -85,11 +86,11 @@ impl<K: FromKey + ToKey + Debug, T: Debug> Default for Node<K, T> {
     fn default() -> Self { Node::new() }
 }
 
-fn children_mut<'a, K, T>(bitmap: &'a Bitmap, children: &'a mut Option<Box<Vec<Node<K, T>>>>) -> impl Iterator<Item = (Key, &'a mut Node<K, T>)> {
+fn children_mut<'a, K, T>(bitmap: &'a Bitmap, children: &'a mut Option<ThinVec<Node<K, T>>>) -> impl Iterator<Item = (Key, &'a mut Node<K, T>)> {
     let children_iter = children.iter_mut().flat_map(|children| children.iter_mut());
     bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().rev().take(RESULTS_BITS_END_NODE).rev().collect()).zip(children_iter)
 }
-fn results_mut<'a, T>(bitmap: &'a Bitmap, results: &'a mut Option<Box<Vec<T>>>) -> impl Iterator<Item = (Key, &'a mut T)> {
+fn results_mut<'a, T>(bitmap: &'a Bitmap, results: &'a mut Option<ThinVec<T>>) -> impl Iterator<Item = (Key, &'a mut T)> {
     let results_iter = results.iter_mut().flat_map(|results| results.iter_mut());
     bitmap.results_bits().iter_ones().map(from_index).zip(results_iter)
 }
