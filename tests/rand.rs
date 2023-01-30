@@ -55,6 +55,49 @@ fn iter(len: usize, max_key_len: usize, seed: u8) {
 }
 
 #[apply(random_tree_template)]
+fn iter_mut(len: usize, max_key_len: usize, seed: u8) {
+    let (mut data, mut tree, _) = random_tree(len, max_key_len, seed);
+
+    data.sort();
+    let mut out = tree.iter_mut().map(|(k, v)| (k, *v)).collect::<Vec<_>>();
+    out.sort();
+    assert_eq!(data, out);
+}
+
+#[apply(random_tree_template)]
+fn keys(len: usize, max_key_len: usize, seed: u8) {
+    let (data, tree, _) = random_tree(len, max_key_len, seed);
+
+    let mut data = data.into_iter().map(|(k, _)| k).collect::<Vec<_>>();
+    data.sort();
+    let mut out = tree.keys().collect::<Vec<_>>();
+    out.sort();
+    assert_eq!(data, out);
+}
+
+#[apply(random_tree_template)]
+fn values(len: usize, max_key_len: usize, seed: u8) {
+    let (data, tree, _) = random_tree(len, max_key_len, seed);
+
+    let mut data = data.iter().map(|(_, v)| v).collect::<Vec<_>>();
+    data.sort();
+    let mut out = tree.values().collect::<Vec<_>>();
+    out.sort();
+    assert_eq!(data, out);
+}
+
+#[apply(random_tree_template)]
+fn values_mut(len: usize, max_key_len: usize, seed: u8) {
+    let (data, mut tree, _) = random_tree(len, max_key_len, seed);
+
+    let mut data = data.iter().map(|(_, v)| v).collect::<Vec<_>>();
+    data.sort();
+    let mut out = tree.values_mut().collect::<Vec<_>>();
+    out.sort();
+    assert_eq!(data, out);
+}
+
+#[apply(random_tree_template)]
 fn remove(len: usize, max_key_len: usize, seed: u8) {
     let (mut data, mut tree, _) = random_tree(len, max_key_len, seed);
 
