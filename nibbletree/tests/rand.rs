@@ -17,14 +17,16 @@ fn random_tree(len: usize, max_key_len: usize, seed: u8) -> (Vec<(Key, u64)>, No
     let mut data = (0..len)
         .map(|_| (rand_key(max_key_len, &mut rng), rng.gen()))
         .collect::<Vec<_>>();
-    data.sort();
-    data.dedup_by_key(|(k, _)| k.clone());
-    data.shuffle(&mut rng);
 
     let mut tree = Node::default();
     for (key, value) in &data {
         tree.insert(key, *value);
     }
+
+    data.reverse();
+    data.sort_by_key(|(k, _)| k.clone());
+    data.dedup_by_key(|(k, _)| k.clone());
+    data.shuffle(&mut rng);
 
     let test_keys = (0..100)
         .map(|_| rand_key(max_key_len, &mut rng))
@@ -115,6 +117,11 @@ fn remove(len: usize, max_key_len: usize, seed: u8) {
 fn exact(len: usize, max_key_len: usize, seed: u8) {
     let (data, tree, test_keys) = random_tree(len, max_key_len, seed);
 
+    for (key, value) in data.iter().take(100) {
+        let should_match = Some(value);
+        let is_match = tree.exact(&key);
+        assert_eq!(should_match, is_match);
+    }
     for key in test_keys {
         let should_match = data
             .iter()
@@ -129,6 +136,11 @@ fn exact(len: usize, max_key_len: usize, seed: u8) {
 fn longest_match(len: usize, max_key_len: usize, seed: u8) {
     let (data, tree, test_keys) = random_tree(len, max_key_len, seed);
 
+    for (key, value) in data.iter().take(100) {
+        let should_match = Some((key.clone(), value));
+        let is_match = tree.longest_match(&key);
+        assert_eq!(should_match, is_match);
+    }
     for key in test_keys {
         let should_match = data
             .iter()
