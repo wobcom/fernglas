@@ -1,8 +1,12 @@
 [package]
 name = "fernglas"
+description = "BGP & BMP looking glass"
 version = "0.1.0"
 edition = "2021"
 default-run = "fernglas"
+authors = [ "Yureka <yuka@yuka.dev>" ]
+license = "EUPL-1.2"
+repository = "https://github.com/wobcom/fernglas"
 
 [dependencies]
 anyhow = "1.0.68"
@@ -26,7 +30,7 @@ tokio-stream = "0.1.11"
 tokio-util = { version = "0.7.4", features = ["codec"] }
 weak-table = "0.3.2"
 zettabgp = { git = "https://github.com/wobcom/zettabgp", branch = "more-capabilities" }
-nibbletree = { path = "./nibbletree", features = ["ipnet"] }
+nibbletree = { version = "0.1.0", path = "./nibbletree", features = ["ipnet"] }
 
 [[bin]]
 name = "fernglas-configcheck"

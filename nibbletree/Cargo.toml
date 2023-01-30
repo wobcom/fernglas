@@ -1,9 +1,11 @@
 [package]
 name = "nibbletree"
+description = "Tree datastructure for versatile prefix lookups based on the Tree-bitmap algorithm"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = [ "Yureka <yuka@yuka.dev>" ]
+license = "EUPL-1.2"
+repository = "https://github.com/wobcom/fernglas"
 
 [dependencies]
 bitvec = "1.0.1"
