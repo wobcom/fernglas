@@ -80,6 +80,96 @@ impl ToKey for (IpAddr, usize) {
     }
 }
 
+#[cfg(feature = "ipnet")]
+impl FromKey for ipnet::Ipv4Net {
+    fn from_key(key: KeyRef) -> ipnet::Ipv4Net {
+        let (addr, prefix_len) = <(Ipv4Addr, usize)>::from_key(key);
+        ipnet::Ipv4Net::new(addr, prefix_len as u8).unwrap()
+    }
+}
+
+#[cfg(feature = "ipnet")]
+impl ToKey for ipnet::Ipv4Net {
+    fn to_key(&self) -> Key {
+        (self.addr(), self.prefix_len() as usize).to_key()
+    }
+}
+
+#[cfg(feature = "ipnet")]
+impl FromKey for ipnet::Ipv6Net {
+    fn from_key(key: KeyRef) -> ipnet::Ipv6Net {
+        let (addr, prefix_len) = <(Ipv6Addr, usize)>::from_key(key);
+        ipnet::Ipv6Net::new(addr, prefix_len as u8).unwrap()
+    }
+}
+
+#[cfg(feature = "ipnet")]
+impl ToKey for ipnet::Ipv6Net {
+    fn to_key(&self) -> Key {
+        (self.addr(), self.prefix_len() as usize).to_key()
+    }
+}
+
+#[cfg(feature = "ipnet")]
+impl FromKey for ipnet::IpNet {
+    fn from_key(key: KeyRef) -> ipnet::IpNet {
+        let (addr, prefix_len) = <(IpAddr, usize)>::from_key(key);
+        ipnet::IpNet::new(addr, prefix_len as u8).unwrap()
+    }
+}
+
+#[cfg(feature = "ipnet")]
+impl ToKey for ipnet::IpNet {
+    fn to_key(&self) -> Key {
+        (self.addr(), self.prefix_len() as usize).to_key()
+    }
+}
+
+#[cfg(feature = "ip_network")]
+impl FromKey for ip_network::Ipv4Network {
+    fn from_key(key: KeyRef) -> ip_network::Ipv4Network {
+        let (addr, netmask) = <(Ipv4Addr, usize)>::from_key(key);
+        ip_network::Ipv4Network::new(addr, netmask as u8).unwrap()
+    }
+}
+
+#[cfg(feature = "ip_network")]
+impl ToKey for ip_network::Ipv4Network {
+    fn to_key(&self) -> Key {
+        (self.network_address(), self.netmask() as usize).to_key()
+    }
+}
+
+#[cfg(feature = "ip_network")]
+impl FromKey for ip_network::Ipv6Network {
+    fn from_key(key: KeyRef) -> ip_network::Ipv6Network {
+        let (addr, netmask) = <(Ipv6Addr, usize)>::from_key(key);
+        ip_network::Ipv6Network::new(addr, netmask as u8).unwrap()
+    }
+}
+
+#[cfg(feature = "ip_network")]
+impl ToKey for ip_network::Ipv6Network {
+    fn to_key(&self) -> Key {
+        (self.network_address(), self.netmask() as usize).to_key()
+    }
+}
+
+#[cfg(feature = "ip_network")]
+impl FromKey for ip_network::IpNetwork {
+    fn from_key(key: KeyRef) -> ip_network::IpNetwork {
+        let (addr, netmask) = <(IpAddr, usize)>::from_key(key);
+        ip_network::IpNetwork::new(addr, netmask as u8).unwrap()
+    }
+}
+
+#[cfg(feature = "ip_network")]
+impl ToKey for ip_network::IpNetwork {
+    fn to_key(&self) -> Key {
+        (self.network_address(), self.netmask() as usize).to_key()
+    }
+}
+
 impl FromKey for Key {
     fn from_key(key: KeyRef) -> Key {
         key.to_bitvec()
