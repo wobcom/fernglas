@@ -80,6 +80,18 @@ impl ToKey for (IpAddr, usize) {
     }
 }
 
+impl FromKey for Key {
+    fn from_key(key: KeyRef) -> Key {
+        key.to_bitvec()
+    }
+}
+
+impl ToKey for Key {
+    fn to_key(&self) -> Key {
+        self.clone()
+    }
+}
+
 #[derive(Debug)]
 pub struct NodeWithKey<K, T> {
     node: Node<T>,
