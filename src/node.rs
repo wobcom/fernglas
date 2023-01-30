@@ -369,4 +369,40 @@ impl<T: Debug> Node<T> {
     pub fn or_longer(&self, key: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
         self.or_longer_with_prefix(Key::new(), key)
     }
+
+    fn matches_with_prefix(&self, prefix: Key, mut key: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
+        let results_iter = {
+            let prefix = prefix.clone();
+            let key = key.clone();
+            self.results()
+                .filter(move |(result_key, _)| {
+                    key.starts_with(result_key)
+                })
+                .map(move |(result_key, val)| {
+                    let mut key = prefix.clone();
+                    key.extend(result_key);
+                    (key, val)
+                })
+        };
+        let children_iter = {
+            let key = key.clone();
+            self.children()
+                .filter(move |(child_key, _)| {
+                    key.starts_with(child_key)
+                })
+        };
+        let children_iter = children_iter
+            .flat_map(move |(child_key, child)| {
+                let remaining = key.split_off(RESULTS_BITS_END_NODE);
+
+                let mut key = prefix.clone();
+                key.extend(child_key);
+                child.matches_with_prefix(key, remaining)
+            });
+        let children_iter: Box<dyn Iterator<Item = (Key, &T)> + '_>  = Box::new(children_iter);
+        results_iter.chain(children_iter)
+    }
+    pub fn matches(&self, key: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
+        self.matches_with_prefix(Key::new(), key)
+    }
 }

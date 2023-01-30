@@ -151,4 +151,9 @@ impl<K: FromKey + ToKey + Debug, T: Debug> NodeWithKey<K, T> {
         self.node.or_longer(key.to_key())
             .map(|(k, v)| (K::from_key_owned(k), v))
     }
+
+    pub fn matches(&self, key: &K) -> impl Iterator<Item = (K, &T)> + '_ {
+        self.node.matches(key.to_key())
+            .map(|(k, v)| (K::from_key_owned(k), v))
+    }
 }

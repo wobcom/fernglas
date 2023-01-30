@@ -158,3 +158,22 @@ fn or_longer(len: usize, max_key_len: usize, seed: u8) {
         assert_eq!(should_match, is_match);
     }
 }
+
+#[apply(random_tree_template)]
+fn matches(len: usize, max_key_len: usize, seed: u8) {
+    let (data, tree, test_keys) = random_tree(len, max_key_len, seed);
+
+    for key in test_keys {
+        let mut should_match = data
+            .iter()
+            .filter(|(k, _)| key.starts_with(k))
+            .map(|(k, v)| (k.clone(), v))
+            .collect::<Vec<_>>();
+        let mut is_match = tree
+            .matches(&key)
+            .collect::<Vec<_>>();
+        should_match.sort();
+        is_match.sort();
+        assert_eq!(should_match, is_match);
+    }
+}
