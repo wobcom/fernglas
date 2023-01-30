@@ -8,3 +8,9 @@ edition = "2021"
 [dependencies]
 bitvec = "1.0.1"
 thin-vec = "0.2.10"
+
+[dev-dependencies]
+rand = "0.8.5"
+rand_xoshiro = "0.6.0"
+rstest = { version = "0.16.0", default-features = false }
+rstest_reuse = { version = "0.5.0", default-features = false }
