@@ -109,10 +109,10 @@ impl<K, T> Default for NodeWithKey<K, T> {
 
 impl<K: FromKey + ToKey + Debug, T: Debug> NodeWithKey<K, T> {
     pub fn insert(&mut self, key: &K, value: T) {
-        self.node.insert(key.to_key(), value)
+        self.node.insert(&key.to_key(), value)
     }
     pub fn remove(&mut self, key: &K) -> Option<T> {
-        self.node.remove(key.to_key())
+        self.node.remove(&key.to_key())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (K, &T)> + '_ {
@@ -136,14 +136,14 @@ impl<K: FromKey + ToKey + Debug, T: Debug> NodeWithKey<K, T> {
             .map(K::from_key_owned)
     }
     pub fn exact(&self, key: &K) -> Option<&T> {
-        self.node.exact(key.to_key())
+        self.node.exact(&key.to_key())
     }
     pub fn exact_mut(&mut self, key: &K) -> Option<&mut T> {
-        self.node.exact_mut(key.to_key())
+        self.node.exact_mut(&key.to_key())
     }
 
     pub fn longest_match(&self, key: &K) -> Option<(K, &T)> {
-        self.node.longest_match(key.to_key())
+        self.node.longest_match(&key.to_key())
             .map(|(k, v)| (K::from_key_owned(k), v))
     }
 
