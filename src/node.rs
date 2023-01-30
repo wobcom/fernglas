@@ -96,7 +96,7 @@ impl<T> Default for Node<T> {
 
 fn children_mut<'a, T>(bitmap: &'a Bitmap, children: &'a mut Option<ThinVec<Node<T>>>) -> impl Iterator<Item = (Key, &'a mut Node<T>)> {
     let children_iter = children.iter_mut().flat_map(|children| children.iter_mut());
-    bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().rev().take(RESULTS_BITS_END_NODE).rev().collect()).zip(children_iter)
+    bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().take(RESULTS_BITS_END_NODE).collect()).zip(children_iter)
 }
 fn results_mut<'a, T>(bitmap: &'a Bitmap, results: &'a mut Option<ThinVec<T>>) -> impl Iterator<Item = (Key, &'a mut T)> {
     let results_iter = results.iter_mut().flat_map(|results| results.iter_mut());
