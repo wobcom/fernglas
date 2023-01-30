@@ -173,19 +173,25 @@ impl<T: Debug> Node<T> {
         self.get_child_mut(key).unwrap()
     }
 
-    pub fn insert(&mut self, key: KeyRef, value: T) {
+    pub fn insert(&mut self, key: KeyRef, value: T) -> Option<T> {
         if key.len() <= self.bitmap.results_capacity() {
             // capacity is suffcient, insert into local node
             let index = to_index(&key);
-            self.bitmap.results_bits_mut().set(index, true);
+
             let results = self.results.get_or_insert(Default::default());
             let vec_index = self.bitmap.results_bits()[..index].count_ones();
-            results.insert(vec_index, value);
+            if self.bitmap.results_bits()[index] {
+                Some(std::mem::replace(&mut results[vec_index], value))
+            } else {
+                self.bitmap.results_bits_mut().set(index, true);
+                results.insert(vec_index, value);
+                None
+            }
         } else {
             let (key, remaining) = key.split_at(RESULTS_BITS_END_NODE);
             // insert into child node
             let child = self.get_or_insert_child(key);
-            child.insert(remaining, value);
+            child.insert(remaining, value)
         }
     }
     pub fn remove(&mut self, key: KeyRef) -> Option<T> {
