@@ -332,7 +332,7 @@ impl<T: Debug> Node<T> {
     fn or_longer_with_prefix(&self, prefix: Key, mut key: Key) -> Box<dyn Iterator<Item = (Key, &T)> + '_> {
         if key.len() > self.bitmap.results_capacity() {
             let mut prefix = prefix.clone();
-            let remaining = key.split_off(5);
+            let remaining = key.split_off(RESULTS_BITS_END_NODE);
             prefix.extend(&key);
             if let Some(child) = self.get_child(key) {
                 child.or_longer_with_prefix(prefix, remaining)
