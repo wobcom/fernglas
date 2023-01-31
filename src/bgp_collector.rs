@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use zettabgp::BgpSessionParams;
 use zettabgp::BgpCapability;
 use zettabgp::BgpTransportMode;
+use zettabgp::BgpCapAddPath;
 use zettabgp::prelude::BgpNotificationMessage;
 use crate::bgpdumper::BgpDumper;
 use crate::table::{Table, TableSelector, Client};
@@ -24,8 +25,7 @@ pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, cli
                 BgpCapability::SafiIPv4u,
                 BgpCapability::SafiIPv6u,
                 BgpCapability::CapRR,
-//use zettabgp::BgpCapAddPath;
-                //BgpCapability::CapAddPath(vec![BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv4u, true, true).unwrap()/*, BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv6u, true, true).unwrap()*/]),
+                BgpCapability::CapAddPath(vec![BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv4u, true, true).unwrap(), BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv6u, true, true).unwrap()]),
                 BgpCapability::CapASN32(cfg.asn),
             ]
             .into_iter()
