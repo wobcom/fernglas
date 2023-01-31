@@ -17,7 +17,7 @@ use log::*;
 use crate::table::*;
 use crate::compressed_attrs::*;
 
-type RouteMap = Arc<Mutex<Node<IpNet, HashMap<u32, Arc<CompressedRouteAttrs>>>>>;
+type RouteMap = Arc<Mutex<Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
@@ -68,11 +68,14 @@ impl Table for InMemoryTable {
         let mut new_insert = None;
         let entry = table.exact_mut(&net)
             .unwrap_or_else(|| {
-                new_insert = Some(HashMap::new());
+                new_insert = Some(Vec::new());
                 new_insert.as_mut().unwrap()
             });
 
-        entry.insert(path_id, compressed);
+        match entry.binary_search_by_key(&path_id, |(k, _)| *k) {
+            Ok(index) => drop(std::mem::replace(&mut entry[index], (path_id, compressed))),
+            Err(index) => entry.insert(index, (path_id, compressed)),
+        };
 
         if let Some(insert) = new_insert {
             table.insert(&net, insert);
@@ -85,7 +88,9 @@ impl Table for InMemoryTable {
 
         let is_empty = match table.exact_mut(&net) {
             Some(entry) => {
-                entry.remove(&path_id);
+                if let Ok(index) = entry.binary_search_by_key(&path_id, |(k, _)| *k) {
+                    entry.remove(index);
+                }
                 entry.is_empty()
             },
             None => return,
