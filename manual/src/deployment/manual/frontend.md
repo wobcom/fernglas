@@ -1,7 +1,12 @@
 # Frontend and Reverse Proxy
 
-Download the prebuilt frontend zipfile from our CI artifacts (link TBD).
+Download the prebuilt frontend tar.
 Extract it to `/usr/local/share/fernglas-frontend`.
+
+```
+$ sudo mkdir -p /usr/local/share/fernglas-frontend
+$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.1.0/fernglas-frontend-0.1.0.tar.xz | sudo tar -C /usr/local/share/fernglas-frontend -xJ
+```
 
 Set up your reverse proxy / webserver.
 A configuration for nginx might look like this:

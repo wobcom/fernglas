@@ -1,6 +1,11 @@
 # Backend
 
-Download a statically linked binary from CI artifacts (link TBD) and place it at `/usr/local/bin/fernglas`. Make it executable.
+Download the statically linked binaries and place them at `/usr/local/bin/`. Make them executable.
+
+```
+$ sudo mkdir -p /usr/local/bin
+$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.1.0/fernglas-static-0.1.0-x86-64-linux.tar.xz | sudo tar -C /usr/local/bin -xJ
+```
 
 File: /etc/fernglas/config.yml
 ```yaml
