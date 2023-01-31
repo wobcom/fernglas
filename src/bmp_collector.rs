@@ -10,7 +10,7 @@ use zettabgp::bmp::BmpMessage;
 use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
 use zettabgp::bmp::prelude::BmpMessagePeerHeader;
 use zettabgp::bmp::prelude::BmpMessageTermination;
-use crate::table::{Table, TableSelector, SessionId, Session, Client};
+use crate::table::{Table, TableSelector, SessionId, Session, Client, RouteState};
 use serde::Deserialize;
 use log::*;
 
@@ -24,7 +24,10 @@ fn table_selector_for_peer(client_addr: SocketAddr, peer: &BmpMessagePeerHeader)
             from_client: client_addr,
             peer_address: peer.peeraddress,
         })),
-        (3, _) => Some(TableSelector::LocRib { from_client: client_addr }),
+        (3, _) => Some(TableSelector::LocRib {
+            from_client: client_addr,
+            route_state: RouteState::Selected,
+        }),
         _ => None,
     }
 }

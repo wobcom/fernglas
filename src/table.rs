@@ -31,6 +31,18 @@ pub struct SessionId {
     pub peer_address: IpAddr,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+pub enum RouteState {
+    /// The route has been received from a neighbor, but was rejected in a filter
+    Seen,
+    /// The route has been received from a neighbor and was accepted in the filters
+    Accepted,
+    /// e.g. equal cost multipath routes
+    Active,
+    /// This means this is the preferred route, and this route is propagated to BGP neighbors
+    Selected,
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[serde(tag = "table")]
@@ -39,13 +51,15 @@ pub enum TableSelector {
     PostPolicyAdjIn(SessionId),
     LocRib {
         from_client: SocketAddr,
+        #[serde(skip_serializing)]
+        route_state: RouteState,
     },
 }
 
 impl TableSelector {
     pub fn client_addr(&self) -> &SocketAddr {
         match self {
-            TableSelector::LocRib { from_client } => from_client,
+            TableSelector::LocRib { from_client, .. } => from_client,
             TableSelector::PostPolicyAdjIn(session) => &session.from_client,
             TableSelector::PrePolicyAdjIn(session) => &session.from_client,
         }
@@ -55,6 +69,13 @@ impl TableSelector {
             TableSelector::LocRib { .. } => None,
             TableSelector::PostPolicyAdjIn(session) => Some(session),
             TableSelector::PrePolicyAdjIn(session) => Some(session),
+        }
+    }
+    pub fn route_state(&self) -> RouteState {
+        match self {
+            TableSelector::LocRib { route_state, .. } => *route_state,
+            TableSelector::PostPolicyAdjIn(_) => RouteState::Accepted,
+            TableSelector::PrePolicyAdjIn(_) => RouteState::Seen
         }
     }
 }
@@ -90,6 +111,7 @@ pub struct Query {
 #[derive(Debug, Clone, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct QueryResult {
+    pub state: RouteState,
     pub net: IpNet,
     #[serde(flatten)]
     pub table: TableSelector,

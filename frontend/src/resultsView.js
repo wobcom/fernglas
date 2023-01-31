@@ -35,7 +35,7 @@ const resultsTemplate = (query, results, done) => html`
 							<td><span>${result.med}</span></td>
 							<td><span>${result.local_pref}</span></td>
 							<td><span>${result.nexthop}</span></td>
-							<td><span>${result.status}</span></td>
+							<td><span>${result.state}</span></td>
 						</tr>
 					`)}
 				</tbody>
@@ -65,14 +65,12 @@ const processResults = (results) => {
 	const preAndPostPolicyKey = route => `${route.from_client}:${route.peer_address}:${route.net}`;
 	for (let route of results) {
 		if (route.table === "PostPolicyAdjIn") {
-			route.status = "Accepted";
 			preAndPostPolicy[preAndPostPolicyKey(route)] = route;
 		}
 	}
 	// add routes which are _only_ in PrePolicy => have not been accepted
 	for (let route of results) {
 		if (route.table === "PrePolicyAdjIn") {
-			route.status = "";
 			const key = preAndPostPolicyKey(route);
 			if (!preAndPostPolicy[key]) {
 				preAndPostPolicy[key] = route;
@@ -82,16 +80,33 @@ const processResults = (results) => {
 
 	// stage 2, combine adj-in and loc-rib
 	const all = {};
-	const allKey = route => `${route.from_client}:${route.net}:${JSON.stringify(route.as_path)}:${JSON.stringify(route.large_communities)}:${route.nexthop}`;
+	const allKey = route => `${route.client_name}:${route.net}:${JSON.stringify(route.as_path)}:${JSON.stringify(route.large_communities)}:${route.nexthop}`;
 	for (let route of Object.values(preAndPostPolicy)) {
 		all[allKey(route)] = route;
 	}
 	for (let route of results) {
-		if (route.table === "LocRib") {
-			route.status = "Selected";
+		if (route.table === "LocRib" && route.state === "Accepted") {
 			const key = allKey(route);
 			if (all[key])
-				all[key].status = "Selected";
+				all[key].state = "Accepted";
+			else
+				all[key] = route;
+		}
+	}
+	for (let route of results) {
+		if (route.table === "LocRib" && route.state === "Active") {
+			const key = allKey(route);
+			if (all[key])
+				all[key].state = "Active";
+			else
+				all[key] = route;
+		}
+	}
+	for (let route of results) {
+		if (route.table === "LocRib" && route.state === "Selected") {
+			const key = allKey(route);
+			if (all[key])
+				all[key].state = "Selected";
 			else
 				all[key] = route;
 		}
@@ -99,10 +114,16 @@ const processResults = (results) => {
 	const newResults = Object.values(all);
 	newResults.sort((a, b) => {
 		let res;
+		res = a.client_name.localeCompare(b.client_name);
+		if (res !== 0) return res;
+		res = parseInt(b.net.split("/")[1]) - parseInt(a.net.split("/")[1]);
+		if (res !== 0) return res;
 		res = a.net.localeCompare(b.net);
 		if (res !== 0) return res;
-		const statusRank = [ "Selected", "Accepted", "" ];
-		res = statusRank.indexOf(a.status) - statusRank.indexOf(b.status);
+		const stateRank = [ "Selected", "Active", "Accepted", "Seen" ];
+		res = stateRank.indexOf(a.state) - stateRank.indexOf(b.state);
+		if (res !== 0) return res;
+		res = JSON.stringify(a).localeCompare(JSON.stringify(b));
 		if (res !== 0) return res;
 		return 0;
 	});

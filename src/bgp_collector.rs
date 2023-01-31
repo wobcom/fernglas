@@ -10,26 +10,28 @@ use zettabgp::BgpTransportMode;
 use zettabgp::BgpCapAddPath;
 use zettabgp::prelude::BgpNotificationMessage;
 use crate::bgpdumper::BgpDumper;
-use crate::table::{Table, TableSelector, Client};
+use crate::table::{Table, TableSelector, Client, RouteState};
 use serde::Deserialize;
 use log::*;
 
 pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<BgpNotificationMessage> {
+    let mut caps = vec![
+        BgpCapability::SafiIPv4u,
+        BgpCapability::SafiIPv6u,
+        BgpCapability::CapRR,
+        BgpCapability::CapASN32(cfg.asn),
+    ];
+    if cfg.add_path {
+        caps.push(BgpCapability::CapAddPath(vec![BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv4u, true, true).unwrap(), BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv6u, true, true).unwrap()]));
+    }
+
     let mut dumper = BgpDumper::new(
         BgpSessionParams::new(
             cfg.asn,
             180,
             BgpTransportMode::IPv4,
             cfg.router_id,
-            vec![
-                BgpCapability::SafiIPv4u,
-                BgpCapability::SafiIPv6u,
-                BgpCapability::CapRR,
-                BgpCapability::CapAddPath(vec![BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv4u, true, true).unwrap(), BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv6u, true, true).unwrap()]),
-                BgpCapability::CapASN32(cfg.asn),
-            ]
-            .into_iter()
-            .collect(),
+            caps,
         ),
         stream,
     );
@@ -57,7 +59,10 @@ pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, cli
             Some(Err(Err(e))) => anyhow::bail!(e),
             None => panic!(),
         };
-        table.insert_bgp_update(TableSelector::LocRib { from_client: client_addr }, update).await;
+        table.insert_bgp_update(TableSelector::LocRib {
+            from_client: client_addr,
+            route_state: cfg.route_state,
+        }, update).await;
     }
 }
 
@@ -66,6 +71,8 @@ pub struct PeerConfig {
     pub asn: u32,
     pub router_id: Ipv4Addr,
     pub name_override: Option<String>,
+    pub route_state: RouteState,
+    pub add_path: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

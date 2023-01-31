@@ -224,6 +224,7 @@ impl Table for InMemoryTable {
                     let session = table.session_id()
                         .and_then(|session_id| sessions.lock().unwrap().get(&session_id).cloned());
                     Some(QueryResult {
+                        state: table.route_state(),
                         net,
                         table,
                         attrs: decompress_route_attrs(&attrs),
