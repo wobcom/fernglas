@@ -17,7 +17,7 @@ use log::*;
 use crate::table::*;
 use crate::compressed_attrs::*;
 
-type RouteMap = Arc<Mutex<Node<IpNet, Arc<CompressedRouteAttrs>>>>;
+type RouteMap = Arc<Mutex<Node<IpNet, HashMap<u32, Arc<CompressedRouteAttrs>>>>>;
 
 #[derive(Default, Clone)]
 pub struct InMemoryTable {
@@ -60,17 +60,39 @@ impl InMemoryTable {
 
 #[async_trait]
 impl Table for InMemoryTable {
-    async fn update_route(&self, net: IpNet, table: TableSelector, route: RouteAttrs) {
+    async fn update_route(&self, path_id: u32, net: IpNet, table: TableSelector, route: RouteAttrs) {
         let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.insert(&net, compressed);
+
+        let mut new_insert = None;
+        let entry = table.exact_mut(&net)
+            .unwrap_or_else(|| {
+                new_insert = Some(HashMap::new());
+                new_insert.as_mut().unwrap()
+            });
+
+        entry.insert(path_id, compressed);
+
+        if let Some(insert) = new_insert {
+            table.insert(&net, insert);
+        }
     }
 
-    async fn withdraw_route(&self, net: IpNet, table: TableSelector) {
+    async fn withdraw_route(&self, path_id: u32, net: IpNet, table: TableSelector) {
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();
-        table.remove(&net);
+
+        let is_empty = match table.exact_mut(&net) {
+            Some(entry) => {
+                entry.remove(&path_id);
+                entry.is_empty()
+            },
+            None => return,
+        };
+        if is_empty {
+            table.remove(&net);
+        }
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
@@ -105,21 +127,39 @@ impl Table for InMemoryTable {
         rayon::spawn(move || {
             match query.net_query {
                 NetQuery::Exact(net) => {
-                    tables.into_par_iter().filter_map(move |(table_sel, table)| {
+                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
                         table.exact(&net)
-                            .map(|has_route| (table_sel.clone(), net.clone(), has_route.clone()))
+                            .into_iter()
+                            .flat_map(move |routes| {
+                                let table_sel = table_sel.clone();
+                                routes.iter().map(move |(_path_id, route)| {
+                                    (table_sel.clone(), net, route.clone())
+                                })
+                            })
+                            .filter(&nets_filter_fn)
+                            .take(max_results_per_table)
+                            .collect::<Vec<_>>()
+                            .into_par_iter()
                     })
-                    .filter(nets_filter_fn)
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
                 NetQuery::MostSpecific(net) => {
-                    tables.into_par_iter().filter_map(move |(table_sel, table)| {
+                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
                         let table = table.lock().unwrap();
 
                         table.longest_match(&net)
-                            .map(move |(net, route)| (table_sel.clone(), net, route.clone()))
+                            .into_iter()
+                            .flat_map(move |(net, routes)| {
+                                let table_sel = table_sel.clone();
+                                routes.iter().map(move |(_path_id, route)| {
+                                    (table_sel.clone(), net, route.clone())
+                                })
+                            })
                             .filter(&nets_filter_fn)
+                            .take(max_results_per_table)
+                            .collect::<Vec<_>>()
+                            .into_par_iter()
                     })
                     .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
                 },
@@ -128,7 +168,12 @@ impl Table for InMemoryTable {
                         let table = table.lock().unwrap();
 
                         table.matches(&net)
-                            .map(move |(net, route)| (table_sel.clone(), net, route.clone()))
+                            .flat_map(move |(net, routes)| {
+                                let table_sel = table_sel.clone();
+                                routes.iter().map(move |(_path_id, route)| {
+                                    (table_sel.clone(), net, route.clone())
+                                })
+                            })
                         .filter(&nets_filter_fn)
                         .take(max_results_per_table)
                         .collect::<Vec<_>>()
@@ -141,7 +186,12 @@ impl Table for InMemoryTable {
                         let table = table.lock().unwrap();
 
                         table.or_longer(&net)
-                            .map(move |(net, route)| (table_sel.clone(), net, route.clone()))
+                            .flat_map(move |(net, routes)| {
+                                let table_sel = table_sel.clone();
+                                routes.iter().map(move |(_path_id, route)| {
+                                    (table_sel.clone(), net, route.clone())
+                                })
+                            })
                         .filter(&nets_filter_fn)
                         .take(max_results_per_table)
                         .collect::<Vec<_>>()
