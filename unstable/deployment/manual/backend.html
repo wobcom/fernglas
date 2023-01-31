@@ -142,7 +142,10 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="backend"><a class="header" href="#backend">Backend</a></h1>
-<p>Download a statically linked binary from CI artifacts (link TBD) and place it at <code>/usr/local/bin/fernglas</code>. Make it executable.</p>
+<p>Download the statically linked binaries and place them at <code>/usr/local/bin/</code>. Make them executable.</p>
+<pre><code>$ sudo mkdir -p /usr/local/bin
+$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.1.0/fernglas-static-0.1.0-x86-64-linux.tar.xz | sudo tar -C /usr/local/bin -xJ
+</code></pre>
 <p>File: /etc/fernglas/config.yml</p>
 <pre><code class="language-yaml">api:
   bind: &quot;[::1]:3000&quot;

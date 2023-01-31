@@ -213,7 +213,10 @@ in {
 <p>TBD</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="manual-setup"><a class="header" href="#manual-setup">Manual Setup</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="backend"><a class="header" href="#backend">Backend</a></h1>
-<p>Download a statically linked binary from CI artifacts (link TBD) and place it at <code>/usr/local/bin/fernglas</code>. Make it executable.</p>
+<p>Download the statically linked binaries and place them at <code>/usr/local/bin/</code>. Make them executable.</p>
+<pre><code>$ sudo mkdir -p /usr/local/bin
+$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.1.0/fernglas-static-0.1.0-x86-64-linux.tar.xz | sudo tar -C /usr/local/bin -xJ
+</code></pre>
 <p>File: /etc/fernglas/config.yml</p>
 <pre><code class="language-yaml">api:
   bind: &quot;[::1]:3000&quot;
@@ -245,8 +248,11 @@ ProtectSystem=strict
 <p><code>systemctl enable --now fernglas.service</code></p>
 <p>Don't forget to open the appropriate firewall ports if necessary!</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="frontend-and-reverse-proxy"><a class="header" href="#frontend-and-reverse-proxy">Frontend and Reverse Proxy</a></h1>
-<p>Download the prebuilt frontend zipfile from our CI artifacts (link TBD).
+<p>Download the prebuilt frontend tar.
 Extract it to <code>/usr/local/share/fernglas-frontend</code>.</p>
+<pre><code>$ sudo mkdir -p /usr/local/share/fernglas-frontend
+$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.1.0/fernglas-frontend-0.1.0.tar.xz | sudo tar -C /usr/local/share/fernglas-frontend -xJ
+</code></pre>
 <p>Set up your reverse proxy / webserver.
 A configuration for nginx might look like this:</p>
 <pre><code>server {
