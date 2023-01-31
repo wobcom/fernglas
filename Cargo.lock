@@ -1076,7 +1076,8 @@ dependencies = [
 [[package]]
 name = "zettabgp"
 version = "0.3.3"
-source = "git+https://github.com/wobcom/zettabgp?branch=more-capabilities#33124011de88b8ff0e6db4f5ca46b1e0fee163bb"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d72efdc26d7ba16ebd69a2b01d5592eb2e0131d6bae38c192db3f122d166fe67"
 dependencies = [
  "log",
  "serde",
