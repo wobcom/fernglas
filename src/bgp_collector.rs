@@ -33,10 +33,21 @@ pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, cli
         ),
         stream,
     );
-    dumper.start_active().await?;
+    let open_message = dumper.start_active().await?;
     let stream = dumper.lifecycle();
     pin_mut!(stream);
     let client_name = cfg.name_override
+        .or(open_message.caps.iter().find_map(|x| {
+            if let BgpCapability::CapFQDN(hostname, domainname) = x {
+                let mut name = hostname.to_string();
+                if domainname != "" {
+                    name = format!("{}.{}", name, domainname);
+                }
+                Some(name)
+            } else {
+                None
+            }
+        }))
         .unwrap_or(client_addr.ip().to_string());
     table.client_up(client_addr, Client { client_name, ..Default::default() }).await;
     loop {

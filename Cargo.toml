@@ -29,7 +29,7 @@ tokio = { version = "1.23.0", features = ["rt", "macros", "time", "rt-multi-thre
 tokio-stream = "0.1.11"
 tokio-util = { version = "0.7.4", features = ["codec"] }
 weak-table = "0.3.2"
-zettabgp = "0.3.3"
+zettabgp = { git = "https://github.com/wobcom/zettabgp", branch = "more-capabilities" }
 nibbletree = { version = "0.1.0", path = "./nibbletree", features = ["ipnet"] }
 
 [[bin]]
