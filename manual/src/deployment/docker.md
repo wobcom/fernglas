@@ -41,10 +41,10 @@ services:
     image: ghcr.io/wobcom/fernglas:latest
     volumes:
       # Mount with read-only configuration file
-      - "config.yml:/config/config.yml:ro"
+      - "./config.yml:/config/config.yml:ro"
     ports: 
       # API port - only used from reverse proxy
-      - "3000:127.0.0.1:3000"
+      - "127.0.0.1:3000:3000"
       # Port for BMP stream collection
       - "11019:11019"
     networks:
@@ -53,7 +53,7 @@ services:
     image: ghcr.io/wobcom/fernglas-frontend:latest
     ports: 
       # Web port - only used from reverse proxy
-      - "8000:127.0.0.1:8000"
+      - "127.0.0.1:8000:8000"
     networks:
       - reverse-proxy
     
