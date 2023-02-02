@@ -120,12 +120,15 @@
         dockerTools.buildImage {
           name = "fernglas";
           tag = "latest";
-          copyToRoot = pkgsStatic.fernglas;
+          config = {
+            Cmd = [ "${pkgsStatic.fernglas}/bin/fernglas" "/config/config.yml"];
+          };
         }
+
       ) { };
 
       fernglas-frontend-docker = final.callPackage (
-        { fernglas-frontend, dockerTools, buildEnv }:
+        { fernglas-frontend, dockerTools, buildEnv, python3 }:
 
         dockerTools.buildImage {
           name = "fernglas-frontend";
@@ -134,6 +137,10 @@
             name = "image-root";
             paths = [ fernglas-frontend ];
             extraPrefix = "/usr/share/fernglas-frontend";
+          };
+          config = {
+            # FIXME: Remove python webserver and use something better.
+            Cmd = [ "${python3}/bin/python" "-m" "http.server" "-d" "/usr/share/fernglas-frontend"];
           };
         }
       ) { };
