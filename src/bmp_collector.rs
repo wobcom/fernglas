@@ -15,7 +15,7 @@ use serde::Deserialize;
 use log::*;
 
 fn table_selector_for_peer(client_addr: SocketAddr, peer: &BmpMessagePeerHeader) -> Option<TableSelector> {
-    match (peer.peertype, peer.flags.view_bits::<Msb0>()[7]) {
+    match (peer.peertype, peer.flags.view_bits::<Msb0>()[1]) {
         (0, false) => Some(TableSelector::PrePolicyAdjIn(SessionId {
             from_client: client_addr,
             peer_address: peer.peeraddress,
