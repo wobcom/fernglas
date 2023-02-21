@@ -1,261 +1,155 @@
-use std::sync::Mutex;
-use regex::Regex;
-use std::pin::Pin;
-use futures_util::Stream;
-use futures_util::StreamExt;
-use std::net::SocketAddr;
+use cidr::IpCidr;
+use std::time::Duration;
 use std::sync::Arc;
+use std::time::Instant;
+use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
+use std::sync::Mutex;
+use std::str::FromStr;
+use futures_util::Stream;
+use std::task::Poll;
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
+use tokio_postgres::{NoTls, Statement};
+use tokio_postgres::types::ToSql;
+use std::pin::Pin;
+use std::net::SocketAddr;
 use ipnet::IpNet;
-use std::collections::HashMap;
 use async_trait::async_trait;
-use tokio_stream::wrappers::ReceiverStream;
-use rayon::iter::ParallelIterator;
-use rayon::iter::IntoParallelIterator;
-use nibbletree::Node;
 use log::*;
 
 use crate::table::*;
-use crate::compressed_attrs::*;
 
-type RouteMap = Arc<Mutex<Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>>>>;
+//table_key: TableSelector,
+//prefix: Cidr,
 
-#[derive(Default, Clone)]
-pub struct InMemoryTable {
-    clients: Arc<Mutex<HashMap<SocketAddr, Client>>>,
-    sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
-    tables: Arc<Mutex<HashMap<TableSelector, RouteMap>>>,
-
-    caches: Arc<Mutex<Caches>>,
+#[derive(Clone)]
+pub struct PostgresTable {
+    pool: Pool,
+    queue: Arc<Mutex<Vec<(serde_json::Value, IpCidr, u32, serde_json::Value)>>>,
 }
 
-fn tables_for_client_fn(query_from_client: &SocketAddr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool + '_ {
-    move |(k, _): &(_, _)| {
-        k.client_addr() == query_from_client
+impl PostgresTable {
+    pub async fn new(uri: &str) -> anyhow::Result<Self> {
+        let pg_config = tokio_postgres::Config::from_str(uri)?;
+        let mgr_config = ManagerConfig {
+            recycling_method: RecyclingMethod::Fast
+        };
+        let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+        let pool = Pool::builder(mgr).max_size(16).build().unwrap();
+
+        let queue: Arc<Mutex<Vec<(serde_json::Value, IpCidr, u32, serde_json::Value)>>> = Default::default();
+
+        for _ in 0..8 {
+            let queue = queue.clone();
+            let mut client = pool.get().await.unwrap();
+            tokio::task::spawn(async move {
+                let update_statement = client.prepare_cached(r#"
+                  INSERT INTO routes
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (table_key, prefix, path_id) DO NOTHING
+                "#).await.unwrap(); 
+
+                let mut update_1024_statement = r#"
+                  INSERT INTO routes
+                    VALUES
+                "#.to_string();
+                for i in 0..1024 {
+                    update_1024_statement += &format!("(${}, ${}, ${})", i * 3 + 1, i * 3 + 2, i * 3 + 3);
+                    if i != 1023 {
+                        update_1024_statement += ",\n";
+                    }
+                }
+                update_1024_statement += r#"
+                    ON CONFLICT (table_key, prefix, path_id) DO NOTHING
+                "#;
+                println!("{}", update_1024_statement);
+                let update_1024_statement = client.prepare_cached(&update_1024_statement).await.unwrap();
+
+                loop {
+                    let mut buf: Vec<(serde_json::Value, IpCidr, u32, serde_json::Value)> = {
+                        let mut queue = queue.lock().unwrap();
+                        std::mem::take(&mut queue)
+                    };
+                    if buf.is_empty() {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+
+                    println!("{}", buf.len());
+                    let start = Instant::now();
+                    let iter = buf.chunks_exact(1024);
+                    let remainder = iter.remainder();
+                    for chunk in iter {
+                        let mut params = chunk.iter().flat_map(|values| -> [&(dyn ToSql + Sync); 3] {
+                            [&values.0, &values.1, &values.2]
+                        }).collect::<Vec<_>>();
+                        if let Err(e) = client.execute(&update_1024_statement, &params).await {
+                            eprintln!("{:?}", e);
+                        }
+                    }
+
+                    let values_arrs: Vec<[&(dyn ToSql + Sync); 3]> = remainder.iter().map(|values| -> [&(dyn ToSql + Sync); 3] {
+                        [&values.0, &values.1, &values.2]
+                    }).collect();
+                    let mut all = values_arrs.iter().map(|arr| {
+                        client.execute(&update_statement, arr)
+                    }).collect::<FuturesUnordered<_>>();
+                    while let Some(res) = all.next().await {
+                        if let Err(e) = res {
+                            eprintln!("{:?}", e);
+                        }
+                    }
+                    let duration = start.elapsed();
+                    println!("{:?}", duration);
+                }
+            });
+        }
+
+        Ok(Self { pool, queue })
     }
 }
-fn tables_for_session_fn(session_id: &SessionId) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool + '_ {
-    move |(k, _): &(_, _)| {
-        k.session_id() == Some(session_id)
-    }
-}
-impl InMemoryTable {
-    fn get_table(&self, sel: TableSelector) -> RouteMap {
-        self.tables.lock().unwrap().entry(sel).or_insert(Default::default()).clone()
-    }
-    fn get_tables_for_client(&self, client_addr: &SocketAddr) -> Vec<(TableSelector, RouteMap)> {
-        self.tables.lock().unwrap()
-            .iter()
-            .filter(tables_for_client_fn(client_addr))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
-    }
-    fn get_tables_for_session(&self, session_id: &SessionId) -> Vec<(TableSelector, RouteMap)> {
-        self.tables.lock().unwrap()
-            .iter()
-            .filter(tables_for_session_fn(session_id))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
-    }
+
+fn ipnet_to_cidr(net: IpNet) -> IpCidr {
+    IpCidr::new(net.addr(), net.prefix_len()).unwrap()
 }
 
 #[async_trait]
-impl Table for InMemoryTable {
+impl Table for PostgresTable {
     async fn update_route(&self, path_id: u32, net: IpNet, table: TableSelector, route: RouteAttrs) {
-        let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
-        let table = self.get_table(table);
-        let mut table = table.lock().unwrap();
+        let mut client = self.pool.get().await.unwrap();
 
-        let mut new_insert = None;
-        let entry = table.exact_mut(&net)
-            .unwrap_or_else(|| {
-                new_insert = Some(Vec::new());
-                new_insert.as_mut().unwrap()
-            });
+        let cidr = ipnet_to_cidr(net);
+        let table_key = serde_json::to_value(table).unwrap();
+        let attrs = serde_json::to_value(route).unwrap();
 
-        match entry.binary_search_by_key(&path_id, |(k, _)| *k) {
-            Ok(index) => drop(std::mem::replace(&mut entry[index], (path_id, compressed))),
-            Err(index) => entry.insert(index, (path_id, compressed)),
-        };
-
-        if let Some(insert) = new_insert {
-            table.insert(&net, insert);
+        loop {
+            {
+                let mut queue = self.queue.lock().unwrap();
+                if queue.len() < 10240 {
+                    queue.push((table_key, cidr, path_id, attrs));
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 
     async fn withdraw_route(&self, path_id: u32, net: IpNet, table: TableSelector) {
-        let table = self.get_table(table);
-        let mut table = table.lock().unwrap();
-
-        let is_empty = match table.exact_mut(&net) {
-            Some(entry) => {
-                if let Ok(index) = entry.binary_search_by_key(&path_id, |(k, _)| *k) {
-                    entry.remove(index);
-                }
-                entry.is_empty()
-            },
-            None => return,
-        };
-        if is_empty {
-            table.remove(&net);
-        }
+        let mut client = self.pool.get().await.unwrap();
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
-
-        let tables = match query.table_query {
-            Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
-            Some(TableQuery::Router(client_addr)) => self.get_tables_for_client(&client_addr),
-            Some(TableQuery::Session(session_id)) => self.get_tables_for_session(&session_id),
-            None => self.tables.lock().unwrap().clone().into_iter().collect(),
-        };
-
-        let mut nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Arc<CompressedRouteAttrs>)) -> bool + Send + Sync> = Box::new(|_| true);
-
-        if let Some(as_path_regex) = query.as_path_regex {
-            let regex = Regex::new(&as_path_regex).unwrap(); // FIXME error handling
-            let new_filter_fn = move |(_, _, route): &(TableSelector, IpNet, Arc<CompressedRouteAttrs>)| {
-                let as_path_text = match &route.as_path {
-                    Some(as_path) => as_path.iter().map(|asn| asn.to_string()).collect::<Vec<_>>().join(" "),
-                    None => return false,
-                };
-                regex.is_match(&as_path_text)
-            };
-            nets_filter_fn = Box::new(move |i| nets_filter_fn(i) && new_filter_fn(i))
-        };
-
-        let (tx, rx) = tokio::sync::mpsc::channel(2);
-
-        let limits = query.limits.unwrap_or_default();
-        let max_results = if limits.max_results == 0 { usize::MAX } else { limits.max_results };
-        let max_results_per_table = if limits.max_results_per_table == 0 { usize::MAX } else { limits.max_results_per_table };
-
-        rayon::spawn(move || {
-            match query.net_query {
-                NetQuery::Exact(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-                        table.exact(&net)
-                            .into_iter()
-                            .flat_map(move |routes| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                            .filter(&nets_filter_fn)
-                            .take(max_results_per_table)
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::MostSpecific(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-
-                        table.longest_match(&net)
-                            .into_iter()
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                            .filter(&nets_filter_fn)
-                            .take(max_results_per_table)
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::Contains(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-
-                        table.matches(&net)
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                        .filter(&nets_filter_fn)
-                        .take(max_results_per_table)
-                        .collect::<Vec<_>>()
-                        .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::OrLonger(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-
-                        table.or_longer(&net)
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                        .filter(&nets_filter_fn)
-                        .take(max_results_per_table)
-                        .collect::<Vec<_>>()
-                        .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-            };
-        });
-
-        let clients = self.clients.clone();
-        let sessions = self.sessions.clone();
-        Box::pin(ReceiverStream::new(rx)
-            .filter_map(move |(table, net, attrs)| {
-                let clients = clients.clone();
-                let sessions = sessions.clone();
-                async move {
-                    let client = match clients.lock().unwrap().get(&table.client_addr()) {
-                        Some(v) => v.clone(),
-                        None => {
-                            warn!("client is not connected");
-                            return None;
-                        }
-                    };
-                    let session = table.session_id()
-                        .and_then(|session_id| sessions.lock().unwrap().get(&session_id).cloned());
-                    Some(QueryResult {
-                        state: table.route_state(),
-                        net,
-                        table,
-                        attrs: decompress_route_attrs(&attrs),
-                        client,
-                        session
-                    })
-                }
-            })
-            .take(max_results))
+        todo!()
     }
 
     async fn client_up(&self, client_addr: SocketAddr, client_data: Client) {
-        self.clients.lock().unwrap().insert(client_addr, client_data);
     }
     async fn client_down(&self, client_addr: SocketAddr) {
-        self.clients.lock().unwrap().remove(&client_addr);
-        self.sessions.lock().unwrap().retain(|k, _| k.from_client != client_addr);
-        self.tables.lock().unwrap().retain(|k, v| !(tables_for_client_fn(&client_addr)(&(k, v))));
-        self.caches.lock().unwrap().remove_expired();
+        let mut client = self.pool.get().await.unwrap();
     }
 
     async fn session_up(&self, session: SessionId, new_state: Session) {
-        self.sessions.lock().unwrap().insert(session, new_state);
     }
     async fn session_down(&self, session: SessionId, new_state: Option<Session>) {
-        if let Some(new_state) = new_state {
-            self.sessions.lock().unwrap().insert(session.clone(), new_state);
-        } else {
-            self.sessions.lock().unwrap().remove(&session);
-        }
-        self.tables.lock().unwrap().retain(|k, v| !(tables_for_session_fn(&session)(&(k, v))));
-        self.caches.lock().unwrap().remove_expired();
+        let mut client = self.pool.get().await.unwrap();
     }
 }
