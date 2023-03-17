@@ -51,7 +51,7 @@ pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, cli
             }
         }))
         .unwrap_or(client_addr.ip().to_string());
-    table.client_up(client_addr, Client { client_name, ..Default::default() }).await;
+    table.client_up(client_addr, cfg.route_state, Client { client_name, ..Default::default() }).await;
     loop {
         let update = match stream.next().await {
             Some(Ok(update)) => update,

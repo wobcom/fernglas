@@ -157,7 +157,7 @@ pub trait Table: Clone + Send + Sync + 'static {
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>>;
 
-    async fn client_up(&self, client_addr: SocketAddr, client_data: Client);
+    async fn client_up(&self, client_addr: SocketAddr, route_state: RouteState, client_data: Client);
 
     async fn client_down(&self, client_addr: SocketAddr);
 

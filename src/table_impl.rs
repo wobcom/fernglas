@@ -238,7 +238,7 @@ impl Table for InMemoryTable {
             .take(max_results))
     }
 
-    async fn client_up(&self, client_addr: SocketAddr, client_data: Client) {
+    async fn client_up(&self, client_addr: SocketAddr, _route_state: RouteState, client_data: Client) {
         self.clients.lock().unwrap().insert(client_addr, client_data);
     }
     async fn client_down(&self, client_addr: SocketAddr) {

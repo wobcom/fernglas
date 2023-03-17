@@ -75,7 +75,7 @@ pub async fn run_client(cfg: PeerConfig, io: TcpStream, client_addr: SocketAddr,
         }
     };
     let client_name = cfg.name_override.or(init_msg.sys_name).unwrap_or(client_addr.ip().to_string());
-    table.client_up(client_addr, Client { client_name }).await;
+    table.client_up(client_addr, RouteState::Selected, Client { client_name }).await;
 
     loop {
         let msg = read.next().await.ok_or(anyhow::anyhow!("unexpected end of stream"))?;
