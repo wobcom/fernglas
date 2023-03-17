@@ -73,6 +73,18 @@ impl PostgresTable {
 
         {
             let client = this.pool.get().await.unwrap();
+            client.execute(r#"
+                update route_tables
+                set ended_at = r.greatest
+                from (
+                    select route_tables.id, greatest(max(routes.started_at), max(routes.ended_at))
+                    from route_tables
+                    join routes on route_tables.id = routes.table_id
+                    where route_tables.ended_at is null
+                    group by route_tables.id
+                ) as r
+                where route_tables.id = r.id
+            "#, &[]).await.unwrap();
             client.execute("TRUNCATE temp_routes", &[]).await.unwrap();
         }
         // persist threads
