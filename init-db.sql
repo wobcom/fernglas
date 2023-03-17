@@ -41,9 +41,7 @@ CREATE INDEX idx_routes ON routes (table_id, path_id, started_at);
 
 CREATE OR REPLACE VIEW view_routes AS
 SELECT
-	table_key ->> 'table' AS table,
-	table_key ->> 'from_client' AS from_client,
-	table_key ->> 'peer_address' AS peer_address,
+	table_key,
 	prefix,
 	GREATEST(route_tables.started_at, routes.started_at) AS started_at,
 	LEAST(route_tables.ended_at, routes.ended_at) AS ended_at,

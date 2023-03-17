@@ -102,7 +102,7 @@ pub struct Query {
     #[serde(flatten)]
     pub table_query: Option<TableQuery>,
     #[serde(flatten)]
-    pub net_query: NetQuery,
+    pub net_query: Option<NetQuery>,
     pub limits: Option<QueryLimits>,
     #[serde(default)]
     pub as_path_regex: Option<String>,

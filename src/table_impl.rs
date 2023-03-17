@@ -1,4 +1,5 @@
-use cidr::IpCidr;
+use cidr::{IpCidr, IpInet};
+use futures_util::FutureExt;
 use std::time::Instant;
 use std::net::IpAddr;
 use std::time::SystemTime;
@@ -243,6 +244,88 @@ impl PostgresTable {
 fn ipnet_to_cidr(net: IpNet) -> IpCidr {
     IpCidr::new(net.addr(), net.prefix_len()).unwrap()
 }
+fn cidr_to_ipnet(net: IpCidr) -> IpNet {
+    IpNet::new(net.first_address(), net.network_length()).unwrap()
+}
+fn ipnet_to_inet(net: IpNet) -> IpInet {
+    IpInet::new(net.addr(), net.prefix_len()).unwrap()
+}
+
+fn make_query_string(query: &Query) -> String {
+    let mut i = 0;
+
+    let mut q = r#"
+        SELECT *
+        FROM view_routes
+    "#.to_string();
+
+    let mut filters = vec![];
+
+    if let Some(table_query) = query.table_query.as_ref() {
+        filters.push(match table_query {
+            TableQuery::Table(_) => format!("table_key = ${}", { i += 1; i }),
+            TableQuery::Session(_) => format!("table_key ->> 'from_client' = ${} AND table_key ->> 'peer_address' = ${}", { i += 1; i }, { i += 1; i }),
+            TableQuery::Router(_) => format!("table_key ->> 'from_client' = ${}", { i += 1; i }),
+        });
+    }
+    if let Some(net_query) = query.net_query.as_ref() {
+        filters.push(match net_query {
+            NetQuery::Contains(_) => format!("prefix >>= ${}", { i += 1; i }),
+            NetQuery::MostSpecific(_) => format!("prefix = (select prefix from view_routes where prefix >>= ${} order by masklen(prefix) desc limit 1)", { i += 1; i }),
+            NetQuery::Exact(_) => format!("prefix = ${}", { i += 1; i }),
+            NetQuery::OrLonger(_) => format!("prefix <<= ${}", { i += 1; i }),
+        });
+    }
+    if query.as_path_regex.is_some() {
+        filters.push(format!("as_path ~ ${}", { i += 1; i }));
+    }
+
+    filters.push("ended_at IS NULL".to_string());
+
+    if !filters.is_empty() { q += &" WHERE "; }
+    q += &filters.join(" AND ");
+
+    let limits = query.limits.clone().unwrap_or_default();
+    if limits.max_results != 0 {
+        q += &format!(" LIMIT ${}", { i += 1; i });
+    }
+    //let have_max_results_per_table = limits.max_results_per_table != 0;
+
+    q
+}
+fn make_query_values(query: &Query) -> Vec<Box<dyn ToSql + Send + Sync>> {
+    let mut v: Vec<Box<dyn ToSql + Send + Sync>> = vec![];
+
+    if let Some(table_query) = query.table_query.as_ref() {
+        match table_query {
+            TableQuery::Table(ts) => v.push(Box::new(serde_json::to_value(&ts).unwrap())),
+            TableQuery::Session(SessionId { from_client, peer_address }) => {
+                v.push(Box::new(from_client.to_string()));
+                v.push(Box::new(peer_address.to_string()));
+            },
+            TableQuery::Router(from_client) => v.push(Box::new(from_client.to_string())),
+        }
+    }
+    if let Some(net_query) = query.net_query.as_ref() {
+        let x = match net_query {
+            NetQuery::Contains(x) => x,
+            NetQuery::MostSpecific(x) => x,
+            NetQuery::Exact(x) => x,
+            NetQuery::OrLonger(x) => x,
+        };
+        v.push(Box::new(ipnet_to_inet(*x)));
+    }
+    if let Some(as_path_regex) = &query.as_path_regex {
+        v.push(Box::new(as_path_regex.to_string()));
+    }
+
+    let limits = query.limits.clone().unwrap_or_default();
+    if limits.max_results != 0 {
+        v.push(Box::new(limits.max_results as i64));
+    }
+
+    v
+}
 
 impl PostgresTable {
     async fn table_up(&self, table_key: TableSelector) {
@@ -254,7 +337,9 @@ impl PostgresTable {
         "#).await.unwrap();
 
         let id = {
-            let table_key = serde_json::to_value(&table_key).unwrap();
+            let route_state = serde_json::to_value(&table_key.route_state()).unwrap();
+            let mut table_key = serde_json::to_value(&table_key).unwrap();
+            table_key.as_object_mut().unwrap().insert("route_state".to_string(), route_state);
             let res = client.query(&statement, &[&table_key]).await.unwrap();
             res.into_iter().next().unwrap().get(0)
         };
@@ -310,8 +395,53 @@ impl Table for PostgresTable {
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
-        todo!()
-        // select table_key ->> 'from_client' as from_client, prefix, routes.started_at, route_tables.ended_at, attrs from routes join route_tables on routes.table_id = route_tables.id where '2a0f:4ac0::/32' >>= prefix limit 100 ;
+        let query_string = make_query_string(&query);
+        let query_values = make_query_values(&query);
+        let pool = self.pool.clone();
+        Box::pin((async move {
+            let client = pool.get().await.unwrap();
+            let statement = client.prepare_cached(&query_string).await.unwrap();
+            client.query_raw(&statement, query_values).await.unwrap()
+        })
+            .flatten_stream()
+            .filter_map(|row| async {
+                let row = match row {
+                    Err(e) => {
+                        println!("{}", e);
+                        return None;
+                    },
+                    Ok(v) => v,
+                };
+                let table_key: serde_json::Value = row.get(0);
+                let prefix: IpCidr = row.get(1);
+                let started_at: SystemTime = row.get(2);
+                let ended_at: Option<SystemTime> = row.get(3);
+                let med: Option<u32> = row.get(4);
+                let local_pref: Option<u32> = row.get(5);
+                let nexthop: Option<IpInet> = row.get(6);
+                let as_path: Option<&str> = row.get(7);
+                let communities: Option<Vec<u32>> = row.get(8);
+                let large_communities: Option<Vec<u32>> = row.get(9);
+
+                let table: TableSelector = serde_json::from_value(table_key).unwrap();
+                Some(QueryResult {
+                    state: RouteState::Selected,
+                    net: cidr_to_ipnet(prefix),
+                    client: Client { client_name: table.client_addr().to_string() },
+                    table: table,
+                    session: None,
+                    attrs: RouteAttrs {
+                        //origin: Option<RouteOrigin>,
+                        as_path: as_path.map(|x| x.split(".").filter_map(|i| (i != "").then(|| u32::from_str(i).unwrap())).collect()),
+                        communities: communities.map(|x| x.into_iter().map(|i| ((i >> 16) as u16, (i & 0xff) as u16)).collect()),
+                        large_communities: large_communities.map(|x| x.chunks_exact(3).map(|i| (i[0], i[1], i[2])).collect()),
+                        med,
+                        local_pref,
+                        nexthop: nexthop.map(|x| x.address()),
+                        ..Default::default()
+                    },
+                })
+            }))
     }
 
     async fn client_up(&self, client_addr: SocketAddr, route_state: RouteState, client_data: Client) {
