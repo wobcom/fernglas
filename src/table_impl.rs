@@ -1,263 +1,324 @@
-use std::sync::Mutex;
-use regex::Regex;
-use std::pin::Pin;
-use futures_util::Stream;
-use futures_util::StreamExt;
-use std::net::SocketAddr;
+use cidr::IpCidr;
+use std::time::Instant;
+use std::net::IpAddr;
+use std::time::SystemTime;
+use std::time::Duration;
 use std::sync::Arc;
-use ipnet::IpNet;
 use std::collections::HashMap;
+use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
+use std::sync::Mutex;
+use std::str::FromStr;
+use futures_util::Stream;
+use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
+use tokio_postgres::NoTls;
+use tokio_postgres::types::ToSql;
+use std::pin::Pin;
+use std::net::SocketAddr;
+use ipnet::IpNet;
 use async_trait::async_trait;
-use tokio_stream::wrappers::ReceiverStream;
-use rayon::iter::ParallelIterator;
-use rayon::iter::IntoParallelIterator;
-use nibbletree::Node;
 use log::*;
 
 use crate::table::*;
 use crate::compressed_attrs::*;
 
-type RouteMap = Arc<Mutex<Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>>>>;
+//table_key: TableSelector,
+//prefix: Cidr,
 
-#[derive(Default, Clone)]
-pub struct InMemoryTable {
-    clients: Arc<Mutex<HashMap<SocketAddr, Client>>>,
-    sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
-    tables: Arc<Mutex<HashMap<TableSelector, RouteMap>>>,
-
+#[derive(Default)]
+pub struct PostgresTableState {
+    table_ids: HashMap<TableSelector, i32>,
+    queue: Vec<QueueEntry>,
+}
+#[derive(Clone)]
+pub struct PostgresTable {
+    pool: Pool,
+    state: Arc<Mutex<PostgresTableState>>,
     caches: Arc<Mutex<Caches>>,
 }
 
-fn tables_for_client_fn(query_from_client: &SocketAddr) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool + '_ {
-    move |(k, _): &(_, _)| {
-        k.client_addr() == query_from_client
+enum QueueEntry {
+    Update {
+        time: SystemTime,
+        table_id: i32,
+        net: IpNet,
+        path_id: u32,
+        attrs: Arc<CompressedRouteAttrs>,
+    },
+    Withdraw {
+        time: SystemTime,
+        table_id: i32,
+        net: IpNet,
+        path_id: u32,
+    },
+}
+
+#[autometrics::autometrics]
+pub fn count_db_insert() {
+}
+
+impl PostgresTable {
+    pub async fn new(uri: &str) -> anyhow::Result<Self> {
+        let pg_config = tokio_postgres::Config::from_str(uri)?;
+        let mgr_config = ManagerConfig {
+            recycling_method: RecyclingMethod::Fast
+        };
+        let mgr = Manager::from_config(pg_config, NoTls, mgr_config);
+
+        let this = Self {
+            pool: Pool::builder(mgr).max_size(32).build().unwrap(),
+            caches: Default::default(),
+            state: Default::default()
+        };
+
+        {
+            let client = this.pool.get().await.unwrap();
+            client.execute("TRUNCATE temp_routes", &[]).await.unwrap();
+        }
+        // persist threads
+        //for thread_num in 0..2 {
+        {
+            let thread_num = 0;
+            let mut client = this.pool.get().await.unwrap();
+            tokio::task::spawn(async move {
+                loop {
+                    debug!("THREAD {} persisting data", thread_num);
+                    let start = Instant::now();
+                    let tx = client.build_transaction().isolation_level(tokio_postgres::IsolationLevel::RepeatableRead).start().await.unwrap();
+                    for query in &[
+                        "CALL add_missing_attrs()",
+                        "CALL process_updates()",
+                        "CALL process_withdraws()",
+                        "CALL delete_processed()"
+                    ] {
+                        let start2 = Instant::now();
+                        if let Err(e) = tx.execute(*query, &[]).await {
+                            println!("{}", e);
+                        }
+                        let took2 = start2.elapsed();
+                        debug!("THREAD {} {} took {:?}", thread_num, query, took2);
+                    }
+                    let start2 = Instant::now();
+                    tx.commit().await.unwrap();
+                    let took2 = start2.elapsed();
+                    debug!("THREAD {} commit took {:?}", thread_num, took2);
+
+                    let took = start.elapsed();
+                    if let Some(rest) = Duration::from_millis(15000).checked_sub(took) {
+                        tokio::time::sleep(rest).await;
+                    }
+                }
+            });
+        }
+        for _ in 0..8 {
+            let state = this.state.clone();
+            let caches = this.caches.clone();
+            let client = this.pool.get().await.unwrap();
+            tokio::task::spawn(async move {
+                let update_statement = client.prepare_cached(r#"
+                  INSERT INTO temp_routes (table_id, prefix, path_id, started_at, med, local_pref, nexthop, as_path, communities, large_communities, ended_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                "#).await.unwrap(); 
+
+                let mut update_2048_statement = r#"
+                  INSERT INTO temp_routes (table_id, prefix, path_id, started_at, med, local_pref, nexthop, as_path, communities, large_communities, ended_at)
+                    VALUES
+                "#.to_string();
+                for i in 0..2048 {
+                    update_2048_statement += "(";
+                    for j in 1..12 {
+                        update_2048_statement += &format!("${}", i * 11 + j);
+                        if j != 11 {
+                            update_2048_statement += ", ";
+                        }
+                    }
+                    update_2048_statement += ")";
+                    if i != 2047 {
+                        update_2048_statement += ",\n";
+                    }
+                }
+                let update_2048_statement = client.prepare_cached(&update_2048_statement).await.unwrap(); 
+
+                loop {
+                    let buf: Vec<QueueEntry> = {
+                        let mut state = state.lock().unwrap();
+                        if state.queue.len() >= 2048 {
+                            state.queue.drain(..2048).collect()
+                        } else {
+                            std::mem::take(&mut state.queue)
+                        }
+                    };
+
+                    if buf.is_empty() {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        continue;
+                    }
+
+                    let buf = buf.into_iter().filter_map(|entry| {
+                        match entry {
+                            QueueEntry::Update { table_id, net, attrs, path_id, time } => {
+                                let cidr = ipnet_to_cidr(net);
+                                Some((
+                                    table_id,
+                                    cidr,
+                                    path_id,
+                                    Some(time),
+                                    attrs.med,
+                                    attrs.local_pref,
+                                    attrs.nexthop,
+                                    attrs.as_path.as_ref().map(|a| a.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(".")),
+                                    attrs.communities.as_ref().map(|a| a.iter().map(|(part1, part2)| (*part1 as u32) << 16 | *part2 as u32).collect::<Vec<_>>()),
+                                    attrs.large_communities.as_ref().map(|a| a.iter().flat_map(|a| [a.0, a.1, a.2]).collect::<Vec<_>>()),
+                                    None as Option<SystemTime>,
+                                ))
+                            }
+                            QueueEntry::Withdraw { table_id, net, path_id, time } => {
+                                let cidr = ipnet_to_cidr(net);
+                                Some((
+                                    table_id,
+                                    cidr,
+                                    path_id,
+                                    None as Option<SystemTime>,
+                                    None as Option<u32>,
+                                    None as Option<u32>,
+                                    None as Option<IpAddr>,
+                                    None as Option<String>,
+                                    None as Option<Vec<u32>>,
+                                    None as Option<Vec<u32>>,
+                                    Some(time)
+                                ))
+                            }
+                        }
+                    }).collect::<Vec<_>>();
+
+                    if buf.len() == 2048 {
+                        let arr: Vec<&(dyn ToSql + Sync)> = buf.iter().flat_map(|values| -> [&(dyn ToSql + Sync); 11] {
+                            [&values.0, &values.1, &values.2, &values.3, &values.4, &values.5, &values.6, &values.7, &values.8, &values.9, &values.10]
+                        }).collect();
+                        if let Err(e) = client.execute(&update_2048_statement, &arr).await {
+                            eprintln!("{:?}", e);
+                        }
+                        for i in 0..2048 { count_db_insert() }
+                        continue;
+                    } else {
+                        caches.lock().unwrap().remove_expired();
+                    }
+
+                    //println!("{}", buf.len());
+                    //let start = Instant::now();
+
+                    let values_arrs: Vec<[&(dyn ToSql + Sync); 11]> = buf.iter().map(|values| -> [&(dyn ToSql + Sync); 11] {
+                        [&values.0, &values.1, &values.2, &values.3, &values.4, &values.5, &values.6, &values.7, &values.8, &values.9, &values.10]
+                    }).collect();
+                    let mut all = values_arrs.iter().map(|arr| {
+                        client.execute(&update_statement, arr)
+                    }).collect::<FuturesUnordered<_>>();
+                    while let Some(res) = all.next().await {
+                        if let Err(e) = res {
+                            eprintln!("{:?}", e);
+                        }
+                        count_db_insert()
+                    }
+                    //let duration = start.elapsed();
+                    //println!("{:?}", duration);
+                }
+            });
+        }
+        Ok(this)
     }
 }
-fn tables_for_session_fn(session_id: &SessionId) -> impl Fn(&(&TableSelector, &RouteMap)) -> bool + '_ {
-    move |(k, _): &(_, _)| {
-        k.session_id() == Some(session_id)
-    }
+
+fn ipnet_to_cidr(net: IpNet) -> IpCidr {
+    IpCidr::new(net.addr(), net.prefix_len()).unwrap()
 }
-impl InMemoryTable {
-    fn get_table(&self, sel: TableSelector) -> RouteMap {
-        self.tables.lock().unwrap().entry(sel).or_insert(Default::default()).clone()
+
+impl PostgresTable {
+    async fn table_up(&self, table_key: TableSelector) {
+        let client = self.pool.get().await.unwrap();
+        let statement = client.prepare_cached(r#"
+          INSERT INTO route_tables
+            VALUES (DEFAULT, $1, NOW())
+            RETURNING id
+        "#).await.unwrap();
+
+        let id = {
+            let table_key = serde_json::to_value(&table_key).unwrap();
+            let res = client.query(&statement, &[&table_key]).await.unwrap();
+            res.into_iter().next().unwrap().get(0)
+        };
+        let mut state = self.state.lock().unwrap();
+        state.table_ids.insert(table_key, id);
     }
-    fn get_tables_for_client(&self, client_addr: &SocketAddr) -> Vec<(TableSelector, RouteMap)> {
-        self.tables.lock().unwrap()
-            .iter()
-            .filter(tables_for_client_fn(client_addr))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
-    }
-    fn get_tables_for_session(&self, session_id: &SessionId) -> Vec<(TableSelector, RouteMap)> {
-        self.tables.lock().unwrap()
-            .iter()
-            .filter(tables_for_session_fn(session_id))
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect()
+    async fn table_down(&self, filter_fn: impl Fn(&TableSelector) -> bool) {
+        let client = self.pool.get().await.unwrap();
+        let statement = client.prepare_cached(r#"
+          UPDATE route_tables
+            SET ended_at = NOW()
+            WHERE id = $1
+        "#).await.unwrap();
+
+        let throw = {
+            let mut state = self.state.lock().unwrap();
+            let table_ids = std::mem::take(&mut state.table_ids);
+            let (throw, keep) = table_ids.into_iter().partition(|(table_key, _)| {
+                filter_fn(&table_key)
+            });
+            state.table_ids = keep;
+            throw
+        };
+
+        for (_table_key, id) in throw {
+            client.execute(&statement, &[&id]).await.unwrap();
+        }
     }
 }
 
 #[async_trait]
-impl Table for InMemoryTable {
+impl Table for PostgresTable {
     #[autometrics::autometrics]
     async fn update_route(&self, path_id: u32, net: IpNet, table: TableSelector, route: RouteAttrs) {
         let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
-        let table = self.get_table(table);
-        let mut table = table.lock().unwrap();
 
-        let mut new_insert = None;
-        let entry = table.exact_mut(&net)
-            .unwrap_or_else(|| {
-                new_insert = Some(Vec::new());
-                new_insert.as_mut().unwrap()
-            });
-
-        match entry.binary_search_by_key(&path_id, |(k, _)| *k) {
-            Ok(index) => drop(std::mem::replace(&mut entry[index], (path_id, compressed))),
-            Err(index) => entry.insert(index, (path_id, compressed)),
-        };
-
-        if let Some(insert) = new_insert {
-            table.insert(&net, insert);
-        }
+        let mut state = self.state.lock().unwrap();
+        let table_id = *state.table_ids.get(&table).unwrap();
+        state.queue.push(QueueEntry::Update {
+            time: SystemTime::now(),
+            path_id, net, table_id, attrs: compressed
+        });
     }
 
     #[autometrics::autometrics]
     async fn withdraw_route(&self, path_id: u32, net: IpNet, table: TableSelector) {
-        let table = self.get_table(table);
-        let mut table = table.lock().unwrap();
-
-        let is_empty = match table.exact_mut(&net) {
-            Some(entry) => {
-                if let Ok(index) = entry.binary_search_by_key(&path_id, |(k, _)| *k) {
-                    entry.remove(index);
-                }
-                entry.is_empty()
-            },
-            None => return,
-        };
-        if is_empty {
-            table.remove(&net);
-        }
+        let mut state = self.state.lock().unwrap();
+        let table_id = *state.table_ids.get(&table).unwrap();
+        state.queue.push(QueueEntry::Withdraw {
+            time: SystemTime::now(),
+            path_id, net, table_id
+        });
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
-
-        let tables = match query.table_query {
-            Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
-            Some(TableQuery::Router(client_addr)) => self.get_tables_for_client(&client_addr),
-            Some(TableQuery::Session(session_id)) => self.get_tables_for_session(&session_id),
-            None => self.tables.lock().unwrap().clone().into_iter().collect(),
-        };
-
-        let mut nets_filter_fn: Box<dyn Fn(&(TableSelector, IpNet, Arc<CompressedRouteAttrs>)) -> bool + Send + Sync> = Box::new(|_| true);
-
-        if let Some(as_path_regex) = query.as_path_regex {
-            let regex = Regex::new(&as_path_regex).unwrap(); // FIXME error handling
-            let new_filter_fn = move |(_, _, route): &(TableSelector, IpNet, Arc<CompressedRouteAttrs>)| {
-                let as_path_text = match &route.as_path {
-                    Some(as_path) => as_path.iter().map(|asn| asn.to_string()).collect::<Vec<_>>().join(" "),
-                    None => return false,
-                };
-                regex.is_match(&as_path_text)
-            };
-            nets_filter_fn = Box::new(move |i| nets_filter_fn(i) && new_filter_fn(i))
-        };
-
-        let (tx, rx) = tokio::sync::mpsc::channel(2);
-
-        let limits = query.limits.unwrap_or_default();
-        let max_results = if limits.max_results == 0 { usize::MAX } else { limits.max_results };
-        let max_results_per_table = if limits.max_results_per_table == 0 { usize::MAX } else { limits.max_results_per_table };
-
-        rayon::spawn(move || {
-            match query.net_query {
-                NetQuery::Exact(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-                        table.exact(&net)
-                            .into_iter()
-                            .flat_map(move |routes| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                            .filter(&nets_filter_fn)
-                            .take(max_results_per_table)
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::MostSpecific(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-
-                        table.longest_match(&net)
-                            .into_iter()
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                            .filter(&nets_filter_fn)
-                            .take(max_results_per_table)
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::Contains(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-
-                        table.matches(&net)
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                        .filter(&nets_filter_fn)
-                        .take(max_results_per_table)
-                        .collect::<Vec<_>>()
-                        .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::OrLonger(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.lock().unwrap();
-
-                        table.or_longer(&net)
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                        .filter(&nets_filter_fn)
-                        .take(max_results_per_table)
-                        .collect::<Vec<_>>()
-                        .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-            };
-        });
-
-        let clients = self.clients.clone();
-        let sessions = self.sessions.clone();
-        Box::pin(ReceiverStream::new(rx)
-            .filter_map(move |(table, net, attrs)| {
-                let clients = clients.clone();
-                let sessions = sessions.clone();
-                async move {
-                    let client = match clients.lock().unwrap().get(&table.client_addr()) {
-                        Some(v) => v.clone(),
-                        None => {
-                            warn!("client is not connected");
-                            return None;
-                        }
-                    };
-                    let session = table.session_id()
-                        .and_then(|session_id| sessions.lock().unwrap().get(&session_id).cloned());
-                    Some(QueryResult {
-                        state: table.route_state(),
-                        net,
-                        table,
-                        attrs: decompress_route_attrs(&attrs),
-                        client,
-                        session
-                    })
-                }
-            })
-            .take(max_results))
+        todo!()
+        // select table_key ->> 'from_client' as from_client, prefix, routes.started_at, route_tables.ended_at, attrs from routes join route_tables on routes.table_id = route_tables.id where '2a0f:4ac0::/32' >>= prefix limit 100 ;
     }
 
-    async fn client_up(&self, client_addr: SocketAddr, _route_state: RouteState, client_data: Client) {
-        self.clients.lock().unwrap().insert(client_addr, client_data);
+    async fn client_up(&self, client_addr: SocketAddr, route_state: RouteState, client_data: Client) {
+        self.table_up(TableSelector::LocRib { from_client: client_addr, route_state }).await;
     }
     async fn client_down(&self, client_addr: SocketAddr) {
-        self.clients.lock().unwrap().remove(&client_addr);
-        self.sessions.lock().unwrap().retain(|k, _| k.from_client != client_addr);
-        self.tables.lock().unwrap().retain(|k, v| !(tables_for_client_fn(&client_addr)(&(k, v))));
-        self.caches.lock().unwrap().remove_expired();
+        self.table_down(|table_key| {
+            table_key.client_addr() == &client_addr
+        }).await;
     }
 
     async fn session_up(&self, session: SessionId, new_state: Session) {
-        self.sessions.lock().unwrap().insert(session, new_state);
+        for table_key in [TableSelector::PrePolicyAdjIn(session.clone()), TableSelector::PostPolicyAdjIn(session)] {
+            self.table_up(table_key).await;
+        }
     }
     async fn session_down(&self, session: SessionId, new_state: Option<Session>) {
-        if let Some(new_state) = new_state {
-            self.sessions.lock().unwrap().insert(session.clone(), new_state);
-        } else {
-            self.sessions.lock().unwrap().remove(&session);
-        }
-        self.tables.lock().unwrap().retain(|k, v| !(tables_for_session_fn(&session)(&(k, v))));
-        self.caches.lock().unwrap().remove_expired();
+        self.table_down(|table_key| {
+            table_key.session_id() == Some(&session)
+        }).await;
     }
 }

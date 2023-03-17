@@ -67,15 +67,3 @@ impl Caches {
         self.route_attrs_cache.remove_expired();
     }
 }
-
-pub fn decompress_route_attrs(route: &CompressedRouteAttrs) -> RouteAttrs {
-    RouteAttrs {
-        as_path: route.as_path.as_ref().map(|x| (**x).clone()),
-        communities: route.communities.as_ref().map(|x| (**x).clone()),
-        large_communities: route.large_communities.as_ref().map(|x| x.iter().map(|x| **x).collect()),
-        local_pref: route.local_pref,
-        med: route.med,
-        origin: route.origin.clone(),
-        nexthop: route.nexthop
-    }
-}

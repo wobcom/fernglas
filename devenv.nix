@@ -1,6 +1,11 @@
 { config, lib, pkgs, ... }:
 
 {
+  services.postgres.enable = true;
+  services.postgres.package = pkgs.postgresql_15;
+  services.postgres.settings = {
+    max_wal_size = "8GB";
+  };
   processes.prometheus = {
     exec = lib.concatStringsSep " " [
       "${pkgs.prometheus}/bin/prometheus"

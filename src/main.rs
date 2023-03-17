@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     let config_path = config_path_from_args();
     let cfg: Config = serde_yaml::from_slice(&tokio::fs::read(&config_path).await?)?;
 
-    let table: table_impl::InMemoryTable = Default::default();
+    let table = table_impl::PostgresTable::new(&cfg.db_uri).await?;
 
     let mut futures = vec![];
 

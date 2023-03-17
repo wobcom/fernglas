@@ -3,8 +3,8 @@ pub mod table_impl;
 pub mod bmp_collector;
 mod bgpdumper;
 pub mod bgp_collector;
-pub mod api;
 mod compressed_attrs;
+pub mod api;
 
 use serde::Deserialize;
 
@@ -38,5 +38,6 @@ pub enum CollectorConfig {
 pub struct Config {
     pub collectors: Vec<CollectorConfig>,
     pub api: api::ApiServerConfig,
+    pub db_uri: String,
 }
 

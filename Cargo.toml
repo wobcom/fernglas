@@ -12,26 +12,26 @@ repository = "https://github.com/wobcom/fernglas"
 anyhow = "1.0.68"
 async-stream = "0.3.3"
 async-trait = "0.1.61"
+autometrics = { version = "0.2.4", features = ["prometheus-exporter"] }
 axum = { version = "0.6.2", default-features = false, features = ["query", "http1", "tokio"] }
 bitvec = "1.0.1"
 bytes = "1.3.0"
+cidr = "0.2.1"
+deadpool-postgres = "0.10.5"
 env_logger = "0.10.0"
 futures-util = "0.3.25"
 ipnet = { version = "2.7.1", features = ["serde"] }
 log = "0.4.17"
 mimalloc = { version = "0.1.34", optional = true }
-rayon = "1.6.1"
-regex = "1.7.1"
+postgres-types = { version = "0.2.4", features = ["with-cidr-0_2", "with-serde_json-1"] }
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.91"
 serde_yaml = "0.9.16"
 tokio = { version = "1.23.0", features = ["rt", "macros", "time", "rt-multi-thread", "io-util", "fs", "signal"] }
-tokio-stream = "0.1.11"
+tokio-postgres = { version = "0.7.7", features = ["array-impls"] }
 tokio-util = { version = "0.7.4", features = ["codec"] }
 weak-table = "0.3.2"
 zettabgp = { git = "https://github.com/wobcom/zettabgp", branch = "more-capabilities" }
-nibbletree = { version = "0.1.0", path = "./nibbletree", features = ["ipnet"] }
-autometrics = { version = "0.3.0", features = ["prometheus-exporter"] }
 
 [[bin]]
 name = "fernglas-configcheck"
