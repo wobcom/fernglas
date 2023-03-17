@@ -60,6 +60,7 @@ impl InMemoryTable {
 
 #[async_trait]
 impl Table for InMemoryTable {
+    #[autometrics::autometrics]
     async fn update_route(&self, path_id: u32, net: IpNet, table: TableSelector, route: RouteAttrs) {
         let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
         let table = self.get_table(table);
@@ -82,6 +83,7 @@ impl Table for InMemoryTable {
         }
     }
 
+    #[autometrics::autometrics]
     async fn withdraw_route(&self, path_id: u32, net: IpNet, table: TableSelector) {
         let table = self.get_table(table);
         let mut table = table.lock().unwrap();

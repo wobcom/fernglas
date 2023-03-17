@@ -20,6 +20,9 @@ async fn main() -> anyhow::Result<()> {
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
+    // Set up the exporter to collect metrics
+    let _exporter = autometrics::global_metrics_exporter();
+
     futures.push(tokio::task::spawn(api::run_api_server(cfg.api, table.clone(), shutdown_rx.clone())));
 
     futures.extend(cfg.collectors.into_iter().map(|collector| {

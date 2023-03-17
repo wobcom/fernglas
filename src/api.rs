@@ -1,4 +1,5 @@
 use axum::body::StreamBody;
+use axum::http::StatusCode;
 use axum::extract::{Query as AxumQuery, State};
 use axum::response::IntoResponse;
 use axum::Router;
@@ -38,9 +39,18 @@ fn make_api<T: Table>(cfg: ApiServerConfig, table: T) -> Router {
         .with_state((Arc::new(cfg), table))
 }
 
+/// This handler serializes the metrics into a string for Prometheus to scrape
+pub async fn get_metrics() -> (StatusCode, String) {
+    match autometrics::encode_global_metrics() {
+        Ok(metrics) => (StatusCode::OK, metrics),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{:?}", err)),
+    }
+}
+
 pub async fn run_api_server<T: Table>(cfg: ApiServerConfig, table: T, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
     let make_service = Router::new()
         .nest("/api", make_api(cfg.clone(), table))
+        .route("/metrics", get(get_metrics))
         .into_make_service();
 
     axum::Server::bind(&cfg.bind)
