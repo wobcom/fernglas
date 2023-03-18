@@ -21,7 +21,6 @@ use async_trait::async_trait;
 use log::*;
 
 use crate::table::*;
-use crate::compressed_attrs::*;
 
 //table_key: TableSelector,
 //prefix: Cidr,
@@ -35,7 +34,6 @@ pub struct PostgresTableState {
 pub struct PostgresTable {
     pool: Pool,
     state: Arc<Mutex<PostgresTableState>>,
-    caches: Arc<Mutex<Caches>>,
 }
 
 enum QueueEntry {
@@ -44,7 +42,7 @@ enum QueueEntry {
         table_id: i32,
         net: IpNet,
         path_id: u32,
-        attrs: Arc<CompressedRouteAttrs>,
+        attrs: RouteAttrs,
     },
     Withdraw {
         time: SystemTime,
@@ -68,7 +66,6 @@ impl PostgresTable {
 
         let this = Self {
             pool: Pool::builder(mgr).max_size(32).build().unwrap(),
-            caches: Default::default(),
             state: Default::default()
         };
 
@@ -125,7 +122,6 @@ impl PostgresTable {
         }
         for _ in 0..8 {
             let state = this.state.clone();
-            let caches = this.caches.clone();
             let client = this.pool.get().await.unwrap();
             tokio::task::spawn(async move {
                 let update_statement = client.prepare_cached(r#"
@@ -213,8 +209,6 @@ impl PostgresTable {
                         }
                         for i in 0..2048 { count_db_insert() }
                         continue;
-                    } else {
-                        caches.lock().unwrap().remove_expired();
                     }
 
                     //println!("{}", buf.len());
@@ -374,13 +368,11 @@ impl PostgresTable {
 impl Table for PostgresTable {
     #[autometrics::autometrics]
     async fn update_route(&self, path_id: u32, net: IpNet, table: TableSelector, route: RouteAttrs) {
-        let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
-
         let mut state = self.state.lock().unwrap();
         let table_id = *state.table_ids.get(&table).unwrap();
         state.queue.push(QueueEntry::Update {
             time: SystemTime::now(),
-            path_id, net, table_id, attrs: compressed
+            path_id, net, table_id, attrs: route
         });
     }
 

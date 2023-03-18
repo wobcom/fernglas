@@ -3,7 +3,6 @@ pub mod table_impl;
 pub mod bmp_collector;
 mod bgpdumper;
 pub mod bgp_collector;
-mod compressed_attrs;
 pub mod api;
 
 use serde::Deserialize;
