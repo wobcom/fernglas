@@ -1,4 +1,5 @@
-pub mod table;
+pub mod store;
+pub mod store_impl;
 pub mod table_impl;
 pub mod bmp_collector;
 mod bgpdumper;

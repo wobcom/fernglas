@@ -4,7 +4,7 @@ use axum::extract::{Query as AxumQuery, State};
 use axum::response::IntoResponse;
 use axum::Router;
 use axum::routing::get;
-use crate::table::{Query, QueryLimits, Table};
+use crate::store::{Query, QueryLimits, Store};
 use futures_util::{StreamExt, FutureExt};
 use std::sync::Arc;
 use std::convert::Infallible;
@@ -19,13 +19,13 @@ pub struct ApiServerConfig {
     query_limits: QueryLimits,
 }
 
-async fn query<T: Table>(State((cfg, table)): State<(Arc<ApiServerConfig>, T)>, AxumQuery(mut query): AxumQuery<Query>) -> impl IntoResponse {
+async fn query<T: Store>(State((cfg, store)): State<(Arc<ApiServerConfig>, T)>, AxumQuery(mut query): AxumQuery<Query>) -> impl IntoResponse {
     trace!("request: {}", serde_json::to_string_pretty(&query).unwrap());
     let mut limits = query.limits.take().unwrap_or(cfg.query_limits.clone());
     limits.max_results = std::cmp::min(limits.max_results, cfg.query_limits.max_results);
     limits.max_results_per_table = std::cmp::min(limits.max_results_per_table, cfg.query_limits.max_results_per_table);
     query.limits = Some(limits);
-    let stream = table.get_routes(query)
+    let stream = store.get_routes(query)
         .map(|route| {
             let json = serde_json::to_string(&route).unwrap();
              Ok::<_, Infallible>(format!("{}\n", json))
@@ -33,10 +33,10 @@ async fn query<T: Table>(State((cfg, table)): State<(Arc<ApiServerConfig>, T)>, 
     StreamBody::new(stream)
 }
 
-fn make_api<T: Table>(cfg: ApiServerConfig, table: T) -> Router {
+fn make_api<T: Store>(cfg: ApiServerConfig, store: T) -> Router {
     Router::new()
         .route("/query", get(query::<T>))
-        .with_state((Arc::new(cfg), table))
+        .with_state((Arc::new(cfg), store))
 }
 
 /// This handler serializes the metrics into a string for Prometheus to scrape
@@ -47,9 +47,9 @@ pub async fn get_metrics() -> (StatusCode, String) {
     }
 }
 
-pub async fn run_api_server<T: Table>(cfg: ApiServerConfig, table: T, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
+pub async fn run_api_server<T: Store>(cfg: ApiServerConfig, store: T, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
     let make_service = Router::new()
-        .nest("/api", make_api(cfg.clone(), table))
+        .nest("/api", make_api(cfg.clone(), store))
         .route("/metrics", get(get_metrics))
         .into_make_service();
 

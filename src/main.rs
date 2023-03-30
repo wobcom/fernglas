@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     let config_path = config_path_from_args();
     let cfg: Config = serde_yaml::from_slice(&tokio::fs::read(&config_path).await?)?;
 
-    let table: table_impl::InMemoryTable = Default::default();
+    let store: store_impl::InMemoryStore = Default::default();
 
     let mut futures = vec![];
 
@@ -23,12 +23,12 @@ async fn main() -> anyhow::Result<()> {
     // Set up the exporter to collect metrics
     let _exporter = autometrics::global_metrics_exporter();
 
-    futures.push(tokio::task::spawn(api::run_api_server(cfg.api, table.clone(), shutdown_rx.clone())));
+    futures.push(tokio::task::spawn(api::run_api_server(cfg.api, store.clone(), shutdown_rx.clone())));
 
     futures.extend(cfg.collectors.into_iter().map(|collector| {
         match collector {
-            CollectorConfig::Bmp(cfg) => tokio::task::spawn(bmp_collector::run(cfg, table.clone(), shutdown_rx.clone())),
-            CollectorConfig::Bgp(cfg) => tokio::task::spawn(bgp_collector::run(cfg, table.clone(), shutdown_rx.clone())),
+            CollectorConfig::Bmp(cfg) => tokio::task::spawn(bmp_collector::run(cfg, store.clone(), shutdown_rx.clone())),
+            CollectorConfig::Bgp(cfg) => tokio::task::spawn(bgp_collector::run(cfg, store.clone(), shutdown_rx.clone())),
         }
     }));
 

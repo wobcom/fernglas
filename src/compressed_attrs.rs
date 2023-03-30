@@ -4,7 +4,7 @@ use std::sync::{Arc, Weak};
 use weak_table::WeakHashSet;
 use weak_table::traits::WeakKey;
 
-use crate::table::*;
+use crate::store::*;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct CompressedRouteAttrs {

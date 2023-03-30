@@ -150,7 +150,7 @@ impl Default for QueryLimits {
 }
 
 #[async_trait]
-pub trait Table: Clone + Send + Sync + 'static {
+pub trait Store: Clone + Send + Sync + 'static {
     async fn update_route(&self, path_id: u32, net: IpNet, table: TableSelector, attrs: RouteAttrs);
 
     async fn withdraw_route(&self, path_id: u32, net: IpNet, table: TableSelector);

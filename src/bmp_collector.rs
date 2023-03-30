@@ -10,7 +10,7 @@ use zettabgp::bmp::BmpMessage;
 use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
 use zettabgp::bmp::prelude::BmpMessagePeerHeader;
 use zettabgp::bmp::prelude::BmpMessageTermination;
-use crate::table::{Table, TableSelector, SessionId, Session, Client, RouteState};
+use crate::store::{Store, TableSelector, SessionId, Session, Client, RouteState};
 use serde::Deserialize;
 use log::*;
 
@@ -32,7 +32,7 @@ fn table_selector_for_peer(client_addr: SocketAddr, peer: &BmpMessagePeerHeader)
     }
 }
 
-async fn process_route_monitoring(table: &impl Table, client_addr: SocketAddr, rm: BmpMessageRouteMonitoring) {
+async fn process_route_monitoring(store: &impl Store, client_addr: SocketAddr, rm: BmpMessageRouteMonitoring) {
     let session = match table_selector_for_peer(client_addr, &rm.peer) {
         Some(session) => session,
         None => {
@@ -41,10 +41,10 @@ async fn process_route_monitoring(table: &impl Table, client_addr: SocketAddr, r
         }
     };
 
-    table.insert_bgp_update(session, rm.update).await;
+    store.insert_bgp_update(session, rm.update).await;
 }
 
-pub async fn run_client(cfg: PeerConfig, io: TcpStream, client_addr: SocketAddr, table: &impl Table) -> anyhow::Result<BmpMessageTermination> {
+pub async fn run_client(cfg: PeerConfig, io: TcpStream, client_addr: SocketAddr, store: &impl Store) -> anyhow::Result<BmpMessageTermination> {
     let read = LengthDelimitedCodec::builder()
         .length_field_offset(1)
         .length_field_type::<u32>()
@@ -75,25 +75,25 @@ pub async fn run_client(cfg: PeerConfig, io: TcpStream, client_addr: SocketAddr,
         }
     };
     let client_name = cfg.name_override.or(init_msg.sys_name).unwrap_or(client_addr.ip().to_string());
-    table.client_up(client_addr, RouteState::Selected, Client { client_name }).await;
+    store.client_up(client_addr, RouteState::Selected, Client { client_name }).await;
 
     loop {
         let msg = read.next().await.ok_or(anyhow::anyhow!("unexpected end of stream"))?;
 
         match msg {
             BmpMessage::RouteMonitoring(rm) => {
-                process_route_monitoring(table, client_addr, rm).await;
+                process_route_monitoring(store, client_addr, rm).await;
             }
             BmpMessage::PeerUpNotification(n) => {
                 trace!("{} {:?}", client_addr, n);
-                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer).and_then(|table| table.session_id().cloned()) {
-                    table.session_up(session_id, Session {}).await;
+                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer).and_then(|store| store.session_id().cloned()) {
+                    store.session_up(session_id, Session {}).await;
                 }
             }
             BmpMessage::PeerDownNotification(n) => {
                 trace!("{} {:?}", client_addr, n);
-                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer).and_then(|table| table.session_id().cloned()) {
-                    table.session_down(session_id, None).await;
+                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer).and_then(|store| store.session_id().cloned()) {
+                    store.session_down(session_id, None).await;
                 }
             }
             BmpMessage::Termination(n) => break Ok(n),
@@ -115,7 +115,7 @@ pub struct BmpCollectorConfig {
     pub default_peer_config: Option<PeerConfig>,
 }
 
-pub async fn run(cfg: BmpCollectorConfig, table: impl Table, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
+pub async fn run(cfg: BmpCollectorConfig, store: impl Store, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
     let listener = TcpListener::bind(cfg.bind).await?;
     let mut running_tasks = vec![];
     loop {
@@ -124,12 +124,12 @@ pub async fn run(cfg: BmpCollectorConfig, table: impl Table, mut shutdown: tokio
                 let (io, client_addr) = new_conn?;
                 info!("connected {:?}", client_addr);
 
-                let table = table.clone();
+                let store = store.clone();
                 let mut shutdown = shutdown.clone();
                 if let Some(peer_cfg) = cfg.peers.get(&client_addr.ip()).or(cfg.default_peer_config.as_ref()).cloned() {
                     running_tasks.push(tokio::spawn(async move {
                         tokio::select! {
-                            res = run_client(peer_cfg, io, client_addr, &table) => {
+                            res = run_client(peer_cfg, io, client_addr, &store) => {
                                 match res {
                                     Err(e) => warn!("disconnected {} {}", client_addr, e),
                                     Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
@@ -138,7 +138,7 @@ pub async fn run(cfg: BmpCollectorConfig, table: impl Table, mut shutdown: tokio
                             _ = shutdown.changed() => {
                             }
                         };
-                        table.client_down(client_addr).await;
+                        store.client_down(client_addr).await;
                     }));
                 } else {
                     info!("unexpected connection from {}", client_addr);

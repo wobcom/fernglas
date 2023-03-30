@@ -10,11 +10,11 @@ use zettabgp::BgpTransportMode;
 use zettabgp::BgpCapAddPath;
 use zettabgp::prelude::BgpNotificationMessage;
 use crate::bgpdumper::BgpDumper;
-use crate::table::{Table, TableSelector, Client, RouteState};
+use crate::store::{Store, TableSelector, Client, RouteState};
 use serde::Deserialize;
 use log::*;
 
-pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<BgpNotificationMessage> {
+pub async fn run_peer(cfg: PeerConfig, store: impl Store, stream: TcpStream, client_addr: SocketAddr) -> anyhow::Result<BgpNotificationMessage> {
     let mut caps = vec![
         BgpCapability::SafiIPv4u,
         BgpCapability::SafiIPv6u,
@@ -51,7 +51,7 @@ pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, cli
             }
         }))
         .unwrap_or(client_addr.ip().to_string());
-    table.client_up(client_addr, cfg.route_state, Client { client_name, ..Default::default() }).await;
+    store.client_up(client_addr, cfg.route_state, Client { client_name, ..Default::default() }).await;
     loop {
         let update = match stream.next().await {
             Some(Ok(update)) => update,
@@ -59,7 +59,7 @@ pub async fn run_peer(cfg: PeerConfig, table: impl Table, stream: TcpStream, cli
             Some(Err(Err(e))) => anyhow::bail!(e),
             None => panic!(),
         };
-        table.insert_bgp_update(TableSelector::LocRib {
+        store.insert_bgp_update(TableSelector::LocRib {
             from_client: client_addr,
             route_state: cfg.route_state,
         }, update).await;
@@ -83,7 +83,7 @@ pub struct BgpCollectorConfig {
     pub default_peer_config: Option<PeerConfig>,
 }
 
-pub async fn run(cfg: BgpCollectorConfig, table: impl Table, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
+pub async fn run(cfg: BgpCollectorConfig, store: impl Store, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
     let listener = TcpListener::bind(cfg.bind).await?;
     let mut running_tasks = vec![];
     loop {
@@ -93,11 +93,11 @@ pub async fn run(cfg: BgpCollectorConfig, table: impl Table, mut shutdown: tokio
                 info!("connected {:?}", client_addr);
 
                 if let Some(peer_cfg) = cfg.peers.get(&client_addr.ip()).or(cfg.default_peer_config.as_ref()).cloned() {
-                    let table = table.clone();
+                    let store = store.clone();
                     let mut shutdown = shutdown.clone();
                     running_tasks.push(tokio::spawn(async move {
                         tokio::select! {
-                            res = run_peer(peer_cfg, table.clone(), io, client_addr) => {
+                            res = run_peer(peer_cfg, store.clone(), io, client_addr) => {
                                 match res {
                                     Err(e) => warn!("disconnected {} {}", client_addr, e),
                                     Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
@@ -106,7 +106,7 @@ pub async fn run(cfg: BgpCollectorConfig, table: impl Table, mut shutdown: tokio
                             _ = shutdown.changed() => {
                             }
                         };
-                        table.client_down(client_addr).await;
+                        store.client_down(client_addr).await;
                     }));
                 } else {
                     info!("unexpected connection from {}", client_addr);
