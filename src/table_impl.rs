@@ -10,6 +10,39 @@ pub struct InMemoryTable {
     pub table: Arc<Mutex<Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>>>>,
     caches: Arc<Mutex<Caches>>,
 }
+
+pub trait NodeExt {
+    fn get_routes(&self, net_query: Option<&NetQuery>) -> Box<dyn Iterator<Item = (IpNet, u32, Arc<CompressedRouteAttrs>)> + Send + '_>;
+}
+
+impl NodeExt for Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>> {
+    fn get_routes(&self, net_query: Option<&NetQuery>) -> Box<dyn Iterator<Item = (IpNet, u32, Arc<CompressedRouteAttrs>)> + Send + '_> {
+        let iter: Box<dyn Iterator<Item = (IpNet, &Vec<(u32, Arc<CompressedRouteAttrs>)>)> + Send + '_> = match net_query {
+            None => {
+                Box::new(self.iter())
+            },
+            Some(NetQuery::Exact(net)) => {
+                Box::new(self.exact(&net).map(|x| (*net, x)).into_iter())
+            },
+            Some(NetQuery::MostSpecific(net)) => {
+                Box::new(self.longest_match(&net).into_iter())
+            },
+            Some(NetQuery::Contains(net)) => {
+                Box::new(self.matches(&net))
+            },
+            Some(NetQuery::OrLonger(net)) => {
+                Box::new(self.or_longer(&net))
+            },
+        };
+        Box::new(iter
+            .flat_map(move |(net, routes)| {
+                routes.iter().map(move |(path_id, route)| {
+                    (net, *path_id, route.clone())
+                })
+            }))
+    }
+}
+
 impl InMemoryTable {
     pub fn new(caches: Arc<Mutex<Caches>>) -> Self {
         Self {

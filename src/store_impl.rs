@@ -99,81 +99,19 @@ impl Store for InMemoryStore {
         let max_results_per_table = if limits.max_results_per_table == 0 { usize::MAX } else { limits.max_results_per_table };
 
         rayon::spawn(move || {
-            match query.net_query {
-                NetQuery::Exact(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.table.lock().unwrap();
-                        table.exact(&net)
-                            .into_iter()
-                            .flat_map(move |routes| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                            .filter(&nets_filter_fn)
-                            .take(max_results_per_table)
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
+            tables.into_par_iter().flat_map(move |(table_sel, table)| {
+                let table = table.table.lock().unwrap();
+                table.get_routes(Some(&query.net_query))
+                    .map(move |(net, _path_id, route)| {
+                        let table_sel = table_sel.clone();
+                        (table_sel.clone(), net, route.clone())
                     })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::MostSpecific(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.table.lock().unwrap();
-
-                        table.longest_match(&net)
-                            .into_iter()
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                            .filter(&nets_filter_fn)
-                            .take(max_results_per_table)
-                            .collect::<Vec<_>>()
-                            .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::Contains(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.table.lock().unwrap();
-
-                        table.matches(&net)
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                        .filter(&nets_filter_fn)
-                        .take(max_results_per_table)
-                        .collect::<Vec<_>>()
-                        .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-                NetQuery::OrLonger(net) => {
-                    tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                        let table = table.table.lock().unwrap();
-
-                        table.or_longer(&net)
-                            .flat_map(move |(net, routes)| {
-                                let table_sel = table_sel.clone();
-                                routes.iter().map(move |(_path_id, route)| {
-                                    (table_sel.clone(), net, route.clone())
-                                })
-                            })
-                        .filter(&nets_filter_fn)
-                        .take(max_results_per_table)
-                        .collect::<Vec<_>>()
-                        .into_par_iter()
-                    })
-                    .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
-                },
-            };
+                .filter(&nets_filter_fn)
+                    .take(max_results_per_table)
+                    .collect::<Vec<_>>()
+                    .into_par_iter()
+            })
+            .for_each_with(tx, |tx, res| drop(tx.blocking_send(res)));
         });
 
         let clients = self.clients.clone();
