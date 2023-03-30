@@ -117,7 +117,7 @@ fn from_index(mut index: usize) -> Key {
     key
 }
 
-impl<T: Debug> Node<T> {
+impl<T: Debug + Send + Sync> Node<T> {
     fn children(&self) -> impl Iterator<Item = (Key, &Node<T>)> {
         let children_iter = self.children.iter().flat_map(|children| children.iter());
         self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().take(RESULTS_BITS_END_NODE).collect()).zip(children_iter)
@@ -209,7 +209,7 @@ impl<T: Debug> Node<T> {
         }
     }
 
-    fn iter_with_prefix(&self, prefix: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
+    fn iter_with_prefix(&self, prefix: Key) -> impl Iterator<Item = (Key, &T)> + Send + Sync + '_ {
         let results_iter = {
             let prefix = prefix.clone();
             self.results().map(move |(result_key, val)| {
@@ -224,10 +224,10 @@ impl<T: Debug> Node<T> {
                 key.extend(child_key);
                 child.iter_with_prefix(key)
             });
-        let children_iter: Box<dyn Iterator<Item = (Key, &T)> + '_>  = Box::new(children_iter);
+        let children_iter: Box<dyn Iterator<Item = (Key, &T)> + Send + Sync + '_>  = Box::new(children_iter);
         results_iter.chain(children_iter)
     }
-    fn iter_mut_with_prefix(&mut self, prefix: Key) -> impl Iterator<Item = (Key, &mut T)> + '_ {
+    fn iter_mut_with_prefix(&mut self, prefix: Key) -> impl Iterator<Item = (Key, &mut T)> + Send + Sync + '_ {
         let results_iter = {
             let prefix = prefix.clone();
             results_mut(&self.bitmap, &mut self.results).map(move |(result_key, val)| {
@@ -242,7 +242,7 @@ impl<T: Debug> Node<T> {
                 key.extend(child_key);
                 child.iter_mut_with_prefix(key)
             });
-        let children_iter: Box<dyn Iterator<Item = (Key, &mut T)> + '_>  = Box::new(children_iter);
+        let children_iter: Box<dyn Iterator<Item = (Key, &mut T)> + Send + Sync + '_>  = Box::new(children_iter);
         results_iter.chain(children_iter)
     }
 
@@ -253,24 +253,24 @@ impl<T: Debug> Node<T> {
         self.iter_mut_with_prefix(Key::new())
     }
 
-    pub fn values(&self) -> impl Iterator<Item = &T> + '_ {
+    pub fn values(&self) -> impl Iterator<Item = &T> + Send + Sync + '_ {
         let results_iter = self.results.iter().flat_map(|values| values.iter());
         let children_iter = self.children.iter()
             .flat_map(|children| children.iter())
             .flat_map(|child| child.values());
-        let children_iter: Box<dyn Iterator<Item = &T> + '_> = Box::new(children_iter);
+        let children_iter: Box<dyn Iterator<Item = &T> + Send + Sync + '_> = Box::new(children_iter);
         results_iter.chain(children_iter)
     }
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> + '_ {
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> + Send + Sync + '_ {
         let results_iter = self.results.iter_mut().flat_map(|values| values.iter_mut());
         let children_iter = self.children.iter_mut()
             .flat_map(|children| children.iter_mut())
             .flat_map(|child| child.values_mut());
-        let children_iter: Box<dyn Iterator<Item = &mut T> + '_> = Box::new(children_iter);
+        let children_iter: Box<dyn Iterator<Item = &mut T> + Send + Sync + '_> = Box::new(children_iter);
         results_iter.chain(children_iter)
     }
 
-    fn keys_with_prefix<'a>(&'a self, prefix: Key) -> impl Iterator<Item = Key> + '_ {
+    fn keys_with_prefix<'a>(&'a self, prefix: Key) -> impl Iterator<Item = Key> + Send + Sync + '_ {
         let results_keys_iter = self.bitmap.results_keys_with_prefix(prefix.clone());
         let children_keys_iter = self.children()
             .flat_map(move |(child_key, child)| {
@@ -278,7 +278,7 @@ impl<T: Debug> Node<T> {
                 key.extend(child_key);
                 child.keys_with_prefix(key)
             });
-        let children_keys_iter: Box<dyn Iterator<Item = Key> + '_> = Box::new(children_keys_iter);
+        let children_keys_iter: Box<dyn Iterator<Item = Key> + Send + Sync + '_> = Box::new(children_keys_iter);
         results_keys_iter.chain(children_keys_iter)
     }
 
@@ -338,7 +338,7 @@ impl<T: Debug> Node<T> {
         self.longest_match_with_prefix(Key::new(), key)
     }
 
-    fn or_longer_with_prefix(&self, prefix: Key, mut key: Key) -> Box<dyn Iterator<Item = (Key, &T)> + '_> {
+    fn or_longer_with_prefix(&self, prefix: Key, mut key: Key) -> Box<dyn Iterator<Item = (Key, &T)> + Send + Sync + '_> {
         if key.len() > self.bitmap.results_capacity() {
             let mut prefix = prefix.clone();
             let remaining = key.split_off(RESULTS_BITS_END_NODE);
@@ -371,7 +371,7 @@ impl<T: Debug> Node<T> {
                     key.extend(child_key);
                     child.iter_with_prefix(key)
                 });
-            let children_iter: Box<dyn Iterator<Item = (Key, &T)> + '_>  = Box::new(children_iter);
+            let children_iter: Box<dyn Iterator<Item = (Key, &T)> + Send + Sync + '_>  = Box::new(children_iter);
             Box::new(results_iter.chain(children_iter))
         }
     }
@@ -379,7 +379,7 @@ impl<T: Debug> Node<T> {
         self.or_longer_with_prefix(Key::new(), key)
     }
 
-    fn matches_with_prefix(&self, prefix: Key, mut key: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
+    fn matches_with_prefix(&self, prefix: Key, mut key: Key) -> impl Iterator<Item = (Key, &T)> + Send + Sync + '_ {
         let results_iter = {
             let prefix = prefix.clone();
             let key = key.clone();
@@ -408,7 +408,7 @@ impl<T: Debug> Node<T> {
                 key.extend(child_key);
                 child.matches_with_prefix(key, remaining)
             });
-        let children_iter: Box<dyn Iterator<Item = (Key, &T)> + '_>  = Box::new(children_iter);
+        let children_iter: Box<dyn Iterator<Item = (Key, &T)> + Send + Sync + '_>  = Box::new(children_iter);
         results_iter.chain(children_iter)
     }
     pub fn matches(&self, key: Key) -> impl Iterator<Item = (Key, &T)> + '_ {

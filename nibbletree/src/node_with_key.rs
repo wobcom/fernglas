@@ -197,7 +197,7 @@ impl<K, T> Default for NodeWithKey<K, T> {
     }
 }
 
-impl<K: FromKey + ToKey + Debug, T: Debug> NodeWithKey<K, T> {
+impl<K: FromKey + ToKey + Debug, T: Debug + Send + Sync> NodeWithKey<K, T> {
     pub fn insert(&mut self, key: &K, value: T) -> Option<T> {
         self.node.insert(&key.to_key(), value)
     }
