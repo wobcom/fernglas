@@ -3,6 +3,7 @@ pub mod bgp_collector;
 mod bgpdumper;
 pub mod bmp_collector;
 mod compressed_attrs;
+pub mod relay;
 pub mod route_distinguisher;
 pub mod store;
 pub mod store_impl;
@@ -41,4 +42,6 @@ pub struct Config {
     /// Only check config and exit
     #[serde(default)]
     pub config_check: bool,
+    #[serde(default)]
+    pub relays: Vec<relay::RelayConfig>,
 }

@@ -23,7 +23,7 @@ pub struct InMemoryStore {
     clients: Arc<Mutex<HashMap<SocketAddr, Client>>>,
     sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
     tables: Arc<Mutex<HashMap<TableSelector, InMemoryTable>>>,
-    caches: Arc<Mutex<Caches>>,
+    pub caches: Arc<Mutex<Caches>>,
 }
 
 fn tables_for_client_fn(
@@ -54,7 +54,7 @@ impl InMemoryStore {
                 == query_router_id
         }
     }
-    fn get_table(&self, sel: TableSelector) -> InMemoryTable {
+    pub fn get_table(&self, sel: TableSelector) -> InMemoryTable {
         self.tables
             .lock()
             .unwrap()
@@ -166,8 +166,9 @@ impl Store for InMemoryStore {
             tables
                 .into_par_iter()
                 .flat_map(move |(table_sel, table)| {
-                    let table = table.table.lock().unwrap();
-                    table
+                    let state = table.state.lock().unwrap();
+                    state
+                        .table
                         .get_routes(Some(&query.net_query))
                         .map(move |(net, _path_id, route)| {
                             let table_sel = table_sel.clone();
