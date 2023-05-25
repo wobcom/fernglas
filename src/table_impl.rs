@@ -5,9 +5,17 @@ use nibbletree::Node;
 use crate::store::*;
 use crate::compressed_attrs::*;
 
+#[derive(Default)]
+pub struct InMemoryTableState {
+    // provide efficient prefix tree lookups
+    pub table: Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>>,
+    // provide a defined ordering for diffs
+    pub vec: Vec<IpNet>,
+}
+
 #[derive(Clone)]
 pub struct InMemoryTable {
-    pub table: Arc<Mutex<Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>>>>,
+    pub state: Arc<Mutex<InMemoryTableState>>,
     caches: Arc<Mutex<Caches>>,
 }
 
@@ -46,18 +54,16 @@ impl NodeExt for Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>> {
 impl InMemoryTable {
     pub fn new(caches: Arc<Mutex<Caches>>) -> Self {
         Self {
-            table: Default::default(),
+            state: Default::default(),
             caches,
         }
     }
 
-    pub async fn update_route(&self, path_id: u32, net: IpNet, route: RouteAttrs) {
-        let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
-
-        let mut table = self.table.lock().unwrap();
+    pub async fn update_route_compressed(&self, path_id: u32, net: IpNet, compressed: Arc<CompressedRouteAttrs>) {
+        let mut state = self.state.lock().unwrap();
 
         let mut new_insert = None;
-        let entry = table.exact_mut(&net)
+        let entry = state.table.exact_mut(&net)
             .unwrap_or_else(|| {
                 new_insert = Some(Vec::new());
                 new_insert.as_mut().unwrap()
@@ -69,14 +75,21 @@ impl InMemoryTable {
         };
 
         if let Some(insert) = new_insert {
-            table.insert(&net, insert);
+            state.table.insert(&net, insert);
+
+            let index = state.vec.partition_point(|&x| x < net);
+            state.vec.insert(index, net);
         }
+    }
+    pub async fn update_route(&self, path_id: u32, net: IpNet, route: RouteAttrs) {
+        let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
+        self.update_route_compressed(path_id, net, compressed).await;
     }
 
     pub async fn withdraw_route(&self, path_id: u32, net: IpNet) {
-        let mut table = self.table.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
 
-        let is_empty = match table.exact_mut(&net) {
+        let is_empty = match state.table.exact_mut(&net) {
             Some(entry) => {
                 if let Ok(index) = entry.binary_search_by_key(&path_id, |(k, _)| *k) {
                     entry.remove(index);
@@ -86,7 +99,10 @@ impl InMemoryTable {
             None => return,
         };
         if is_empty {
-            table.remove(&net);
+            state.table.remove(&net);
+            if let Ok(index) = state.vec.binary_search(&net) {
+                state.vec.remove(index);
+            }
         }
     }
 }

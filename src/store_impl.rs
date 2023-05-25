@@ -23,7 +23,7 @@ pub struct InMemoryStore {
     sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
     tables: Arc<Mutex<HashMap<TableSelector, InMemoryTable>>>,
 
-    caches: Arc<Mutex<Caches>>,
+    pub caches: Arc<Mutex<Caches>>,
 }
 
 fn tables_for_client_fn(query_from_client: &SocketAddr) -> impl Fn(&(&TableSelector, &InMemoryTable)) -> bool + '_ {
@@ -37,7 +37,7 @@ fn tables_for_session_fn(session_id: &SessionId) -> impl Fn(&(&TableSelector, &I
     }
 }
 impl InMemoryStore {
-    fn get_table(&self, sel: TableSelector) -> InMemoryTable {
+    pub fn get_table(&self, sel: TableSelector) -> InMemoryTable {
         self.tables.lock().unwrap().entry(sel).or_insert(InMemoryTable::new(self.caches.clone())).clone()
     }
     fn get_tables_for_client(&self, client_addr: &SocketAddr) -> Vec<(TableSelector, InMemoryTable)> {
@@ -100,8 +100,8 @@ impl Store for InMemoryStore {
 
         rayon::spawn(move || {
             tables.into_par_iter().flat_map(move |(table_sel, table)| {
-                let table = table.table.lock().unwrap();
-                table.get_routes(Some(&query.net_query))
+                let state = table.state.lock().unwrap();
+                state.table.get_routes(Some(&query.net_query))
                     .map(move |(net, _path_id, route)| {
                         let table_sel = table_sel.clone();
                         (table_sel.clone(), net, route.clone())

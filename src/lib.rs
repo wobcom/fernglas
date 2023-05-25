@@ -6,6 +6,7 @@ mod bgpdumper;
 pub mod bgp_collector;
 pub mod api;
 mod compressed_attrs;
+pub mod relay;
 
 use serde::Deserialize;
 
@@ -39,5 +40,7 @@ pub enum CollectorConfig {
 pub struct Config {
     pub collectors: Vec<CollectorConfig>,
     pub api: api::ApiServerConfig,
+    #[serde(default)]
+    pub relays: Vec<relay::RelayConfig>,
 }
 
