@@ -321,7 +321,7 @@ impl<T: Debug + Send + Sync> Node<T> {
         .flatten()
         .or_else(|| {
             loop {
-                if let Some(result) = self.exact(key.clone()) {
+                if let Some(result) = self.exact(key) {
                     prefix.extend(key);
                     return Some((prefix, result));
                 }
