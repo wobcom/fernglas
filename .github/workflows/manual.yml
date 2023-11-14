@@ -6,8 +6,8 @@ jobs:
   fernglas-manual:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3.3.0
-    - uses: cachix/install-nix-action@v18
+    - uses: actions/checkout@v4.1.1
+    - uses: cachix/install-nix-action@v23
     - uses: cachix/cachix-action@v12
       with:
         name: wobcom-public
@@ -15,7 +15,7 @@ jobs:
     - run: nix build .#fernglas-manual -vL
     - name: Deploy manual
       if: ${{ github.repository == 'wobcom/fernglas' && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-      uses: JamesIves/github-pages-deploy-action@v4.4.1
+      uses: JamesIves/github-pages-deploy-action@v4.4.3
       with:
         branch: gh-pages
         folder: result
