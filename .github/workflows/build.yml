@@ -11,7 +11,6 @@ jobs:
           "pkgsStatic",
           "pkgsCross.musl64",
           "pkgsCross.aarch64-multiplatform",
-          "pkgsCross.aarch64-multiplatform.pkgsStatic",
           "pkgsCross.aarch64-multiplatform-musl"
         ]
     runs-on: ubuntu-latest
