@@ -6,6 +6,8 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use log::*;
 
+pub type PathId = u32;
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 pub enum RouteOrigin {
     Igp,
@@ -151,9 +153,9 @@ impl Default for QueryLimits {
 
 #[async_trait]
 pub trait Store: Clone + Send + Sync + 'static {
-    async fn update_route(&self, path_id: u32, net: IpNet, table: TableSelector, attrs: RouteAttrs);
+    async fn update_route(&self, path_id: PathId, net: IpNet, table: TableSelector, attrs: RouteAttrs);
 
-    async fn withdraw_route(&self, path_id: u32, net: IpNet, table: TableSelector);
+    async fn withdraw_route(&self, path_id: PathId, net: IpNet, table: TableSelector);
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>>;
 
@@ -246,7 +248,7 @@ pub trait Store: Clone + Send + Sync + 'static {
     }
 }
 
-fn bgp_addrs_to_nets(addrs: &zettabgp::prelude::BgpAddrs) -> Vec<(u32, IpNet)> {
+fn bgp_addrs_to_nets(addrs: &zettabgp::prelude::BgpAddrs) -> Vec<(PathId, IpNet)> {
     use zettabgp::prelude::*;
     match addrs {
         BgpAddrs::IPV4UP(ref addrs) => {

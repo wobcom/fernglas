@@ -59,13 +59,13 @@ impl InMemoryStore {
 #[async_trait]
 impl Store for InMemoryStore {
     #[autometrics::autometrics]
-    async fn update_route(&self, path_id: u32, net: IpNet, table: TableSelector, route: RouteAttrs) {
+    async fn update_route(&self, path_id: PathId, net: IpNet, table: TableSelector, route: RouteAttrs) {
         let table = self.get_table(table);
         table.update_route(path_id, net, route).await;
     }
 
     #[autometrics::autometrics]
-    async fn withdraw_route(&self, path_id: u32, net: IpNet, table: TableSelector) {
+    async fn withdraw_route(&self, path_id: PathId, net: IpNet, table: TableSelector) {
         let table = self.get_table(table);
         table.withdraw_route(path_id, net).await;
     }

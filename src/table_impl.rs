@@ -7,17 +7,17 @@ use crate::compressed_attrs::*;
 
 #[derive(Clone)]
 pub struct InMemoryTable {
-    pub table: Arc<Mutex<Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>>>>,
+    pub table: Arc<Mutex<Node<IpNet, Vec<(PathId, Arc<CompressedRouteAttrs>)>>>>,
     caches: Arc<Mutex<Caches>>,
 }
 
 pub trait NodeExt {
-    fn get_routes(&self, net_query: Option<&NetQuery>) -> Box<dyn Iterator<Item = (IpNet, u32, Arc<CompressedRouteAttrs>)> + Send + '_>;
+    fn get_routes(&self, net_query: Option<&NetQuery>) -> Box<dyn Iterator<Item = (IpNet, PathId, Arc<CompressedRouteAttrs>)> + Send + '_>;
 }
 
-impl NodeExt for Node<IpNet, Vec<(u32, Arc<CompressedRouteAttrs>)>> {
-    fn get_routes(&self, net_query: Option<&NetQuery>) -> Box<dyn Iterator<Item = (IpNet, u32, Arc<CompressedRouteAttrs>)> + Send + '_> {
-        let iter: Box<dyn Iterator<Item = (IpNet, &Vec<(u32, Arc<CompressedRouteAttrs>)>)> + Send + '_> = match net_query {
+impl NodeExt for Node<IpNet, Vec<(PathId, Arc<CompressedRouteAttrs>)>> {
+    fn get_routes(&self, net_query: Option<&NetQuery>) -> Box<dyn Iterator<Item = (IpNet, PathId, Arc<CompressedRouteAttrs>)> + Send + '_> {
+        let iter: Box<dyn Iterator<Item = (IpNet, &Vec<(PathId, Arc<CompressedRouteAttrs>)>)> + Send + '_> = match net_query {
             None => {
                 Box::new(self.iter())
             },
@@ -51,7 +51,7 @@ impl InMemoryTable {
         }
     }
 
-    pub async fn update_route(&self, path_id: u32, net: IpNet, route: RouteAttrs) {
+    pub async fn update_route(&self, path_id: PathId, net: IpNet, route: RouteAttrs) {
         let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
 
         let mut table = self.table.lock().unwrap();
@@ -73,7 +73,7 @@ impl InMemoryTable {
         }
     }
 
-    pub async fn withdraw_route(&self, path_id: u32, net: IpNet) {
+    pub async fn withdraw_route(&self, path_id: PathId, net: IpNet) {
         let mut table = self.table.lock().unwrap();
 
         let is_empty = match table.exact_mut(&net) {
