@@ -25,7 +25,7 @@ const resultsTemplate = (query, results, done) => html`
 				</thead>
 				<tbody>
 					${results.map(result => html`
-						<tr>
+						<tr class=${result.state}>
 							<td><span>${result.client_name}</span></td>
 							${results.some(result => result.peer_address) ? html`<td><span>${result.peer_address}</span></td>` : ``}
 							<td><span>${result.net}</span></td>

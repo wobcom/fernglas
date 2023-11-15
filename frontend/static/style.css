@@ -100,9 +100,6 @@ body {
 .results tbody tr {
         border-top: 1px solid #ccc;
 }
-.results tr {
-        background-color: #fff;
-}
 
 .results td, th {
         text-align: center;
@@ -136,8 +133,17 @@ body {
         border-bottom: 1px solid rgba(0, 0, 0, .2);
 }
 
+.results tr {
+        background-color: #fff;
+}
 .results tbody tr:hover {
         background-color: #ddd;
+}
+.results tbody tr.Selected {
+	background-color: #ddffaa;
+}
+.results tbody tr.Selected:hover {
+        background-color: #ccddaa;
 }
 
 .results tbody tr:hover td {
