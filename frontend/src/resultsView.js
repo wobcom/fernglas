@@ -12,7 +12,7 @@ const resultsTemplate = (query, results, done) => html`
 				<thead>
 					<tr>
 						<th>Router</th>
-						<th>Peer</th>
+						${results.some(result => result.peer_address) ? html`<th>Peer</th>` : ``}
 						<th>Prefix</th>
 						<th>AS Path</th>
 						<th>Large Communities</th>
@@ -27,7 +27,7 @@ const resultsTemplate = (query, results, done) => html`
 					${results.map(result => html`
 						<tr>
 							<td><span>${result.client_name}</span></td>
-							<td><span>${result.peer_address}</span></td>
+							${results.some(result => result.peer_address) ? html`<td><span>${result.peer_address}</span></td>` : ``}
 							<td><span>${result.net}</span></td>
 							<td><span>${result.as_path.join(" ")}</span></td>
 							<td><span>${(result.large_communities || []).map(community => `(${community.join(",")})`).join(" ")}</span></td>
