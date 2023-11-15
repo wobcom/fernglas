@@ -16,18 +16,32 @@ const formSubmit = (e) => {
 			val += "/128";
 		}
 	}
-	window.location.hash = `#/${mode}/${val}`;
+	const router = data.get("router-sel");
+	let res = "#/";
+	if (val !== "") {
+		res += `${mode}/${val}`;
+	}
+	if (router != "all") {
+		res += `?Router=${router}`;
+	}
+	window.location.hash = res;
 	return false;
 };
 
-export const searchTemplate = (query) => html`
+export const searchTemplate = (routers, [ mode, ip, prefixLength, optionsString ]) => html`
 	<form id="input" @submit=${formSubmit}>
 		<select name="query-mode" id="query-mode" @change=${() => document.getElementById("input-submit").click()}>
 			${modes.map(name => html`
-				<option value=${name} ?selected=${query && query[0] === name}>${name}</option>
+				<option value=${name} ?selected=${mode === name}>${name}</option>
 			`)}
 		</select>
-		<input name="input-field" id="input-field" type="text" spellcheck=false" autocomplete="new-password" autocorrect="off" autocapitalize="off" value=${query ? `${query[1]}/${query[2]}` : ''} />
+		<input name="input-field" id="input-field" type="text" spellcheck=false" autocomplete="new-password" autocorrect="off" autocapitalize="off" value=${!!ip && !!prefixLength ? `${ip}/${prefixLength}` : ``} />
+		<select name="router-sel" id="router-sel" @change=${() => document.getElementById("input-submit").click()}>
+			<option value="all">on all</option>
+			${[...new Set(Object.values(routers).map(router => router.client_name))].map(name => html`
+				<option value=${name} ?selected=${(new URLSearchParams(optionsString)).get("Router") === name}>on ${name}</option>
+			`)}
+		</select>
 		<input type="submit" id="input-submit" value="Go" />
 	</form>
 `;

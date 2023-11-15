@@ -8,7 +8,7 @@ import { hideDiv } from './helpers.js';
 	//await initDataStorage();
 	//await initSettings();
 
-	route(/^\/$/, historyView);
+	route(/^\/(\?.*)?$/, historyView);
 	route(/^\/([^\/]+)\/([^\/]+)\/([^\/?]+)(\?.*)?$/, resultsView);
 
 	document.getElementById('loader-overlay').innerHTML = '';

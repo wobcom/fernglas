@@ -3,8 +3,11 @@ import { go } from './router.js';
 import { searchTemplate } from './search.js';
 import ndjsonStream from 'can-ndjson-stream';
 
-const resultsTemplate = (query, results, done) => html`
-	${searchTemplate(query)}
+const communities = {
+};
+
+const resultsTemplate = (routers, query, results, done) => html`
+	${searchTemplate(routers, query)}
 
 	<div class="results">
 		${results.length > 0 ? html`
@@ -30,11 +33,11 @@ const resultsTemplate = (query, results, done) => html`
 							${results.some(result => result.peer_address) ? html`<td><span>${result.peer_address}</span></td>` : ``}
 							<td><span>${result.net}</span></td>
 							<td><span>${result.as_path.join(" ")}</span></td>
-							<td><span>${[...(result.large_communities || []), ...(result.communities || [])].map(community => html`<div class="tag">${community.join(" ")}</div>`)}</span></td>
+							<td><span>${[...(result.large_communities || []), ...(result.communities || [])].map(community => community.join(":")).map(community => html`<div class="tag">${communities[community] || community}</div>`)}</span></td>
 							<td><span>${result.origin}</span></td>
 							<td><span>${result.med}</span></td>
 							<td><span>${result.local_pref}</span></td>
-							<td><span>${result.nexthop}</span></td>
+							<td><span>${Object.values(routers).find(router => router.router_id === result.nexthop)?.client_name || result.nexthop}</span></td>
 							<td><span>${result.state}</span></td>
 						</tr>
 					`)}
@@ -50,7 +53,7 @@ const resultsTemplate = (query, results, done) => html`
 `;
 
 const errorTemplate = (query, data) => html`
-	${searchTemplate(query)}
+	${searchTemplate({}, query)}
 	<div id="error">
 		<h1 id="error-text">${data.text}</h1>
 		<sub id="error-descr">${data.description}</sub>
@@ -137,8 +140,19 @@ export const resultsView = async (query) => {
 	const searchParams = new URLSearchParams(optionsString);
 	searchParams.append(mode, `${ip}/${prefixLength}`);
 
-	render(resultsTemplate(query, [], false), document.getElementById('content'));
-	const response = await fetch("/api/query?" + searchParams);
+	const routersProm = fetch("/api/routers").then(resp => resp.json());
+
+	const param_router = searchParams.get("Router");
+	if (param_router !== null) {
+		const routers = await routersProm;
+		searchParams.set("Router", Object.values(routers).find(router => router.client_name == param_router).router_id);
+	}
+
+	render(resultsTemplate({}, query, [], false), document.getElementById('content'));
+	const [routers, response] = await Promise.all([
+		routersProm,
+		fetch("/api/query?" + searchParams)
+	]);
 	if (!response.ok) {
 		render(errorTemplate(query, {
 			text: "No data",
@@ -155,7 +169,7 @@ export const resultsView = async (query) => {
 		if (result.value) {
 			results.push(result.value);
 		}
-		render(resultsTemplate(query, processResults(results), result.done), document.getElementById('content'));
+		render(resultsTemplate(routers, query, processResults(results), result.done), document.getElementById('content'));
 	}
 	if (results.length == 0) {
 		render(errorTemplate(query, {
