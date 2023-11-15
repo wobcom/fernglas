@@ -41,6 +41,7 @@ body {
 }
 #input input#input-field {
 	flex-grow: 1;
+	width: 0; /* wtf? */
 }
 
 #input>* {
