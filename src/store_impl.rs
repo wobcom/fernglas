@@ -37,6 +37,21 @@ fn tables_for_session_fn(
     move |(k, _): &(_, _)| k.session_id() == Some(session_id)
 }
 impl InMemoryStore {
+    fn tables_for_router_fn<'a>(
+        &self,
+        query_router_id: &'a RouterId,
+    ) -> impl Fn(&(&TableSelector, &InMemoryTable)) -> bool + 'a {
+        let clients = self.clients.clone();
+        move |(k, _): &(_, _)| {
+            &clients
+                .lock()
+                .unwrap()
+                .get(k.client_addr())
+                .unwrap()
+                .router_id
+                == query_router_id
+        }
+    }
     fn get_table(&self, sel: TableSelector) -> InMemoryTable {
         self.tables
             .lock()
@@ -54,6 +69,15 @@ impl InMemoryStore {
             .unwrap()
             .iter()
             .filter(tables_for_client_fn(client_addr))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+    fn get_tables_for_router(&self, router_id: &RouterId) -> Vec<(TableSelector, InMemoryTable)> {
+        self.tables
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(self.tables_for_router_fn(router_id))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
@@ -94,7 +118,8 @@ impl Store for InMemoryStore {
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
         let tables = match query.table_query {
             Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
-            Some(TableQuery::Router(client_addr)) => self.get_tables_for_client(&client_addr),
+            Some(TableQuery::Client(client_addr)) => self.get_tables_for_client(&client_addr),
+            Some(TableQuery::Router(router_id)) => self.get_tables_for_router(&router_id),
             Some(TableQuery::Session(session_id)) => self.get_tables_for_session(&session_id),
             None => self.tables.lock().unwrap().clone().into_iter().collect(),
         };

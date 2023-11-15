@@ -124,7 +124,8 @@ pub async fn run_client(
                     None
                 }
             }
-        });
+        })
+        .peekable();
     pin_mut!(read);
     let init_msg = match read.next().await {
         Some(BmpMessage::Initiation(i)) => i,
@@ -132,12 +133,25 @@ pub async fn run_client(
             anyhow::bail!("expected initiation message, got: {:?}", other);
         }
     };
+    let first_peer_up = match read.next().await {
+        Some(BmpMessage::PeerUpNotification(n)) => n,
+        other => {
+            anyhow::bail!("expected initial peer up notification, got: {:?}", other);
+        }
+    };
     let client_name = cfg
         .name_override
         .or(init_msg.sys_name)
         .unwrap_or(client_addr.ip().to_string());
     store
-        .client_up(client_addr, RouteState::Selected, Client { client_name })
+        .client_up(
+            client_addr,
+            RouteState::Selected,
+            Client {
+                client_name,
+                router_id: first_peer_up.msg1.router_id,
+            },
+        )
         .await;
 
     let mut channels: HashMap<

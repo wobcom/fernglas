@@ -60,7 +60,7 @@ pub async fn run_peer(
             cfg.route_state,
             Client {
                 client_name,
-                ..Default::default()
+                router_id: open_message.router_id,
             },
         )
         .await;

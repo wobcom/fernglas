@@ -3,10 +3,12 @@ use futures_util::Stream;
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use log::*;
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
+use std::collections::HashMap;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::pin::Pin;
 
 pub type PathId = u32;
+pub type RouterId = Ipv4Addr;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 pub enum RouteOrigin {
@@ -86,7 +88,8 @@ impl TableSelector {
 pub enum TableQuery {
     Table(TableSelector),
     Session(SessionId),
-    Router(SocketAddr),
+    Client(SocketAddr),
+    Router(RouterId),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,9 +135,10 @@ pub struct QueryLimits {
 }
 
 /// information saved about a connected router
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Client {
     pub client_name: String,
+    pub router_id: RouterId, // Router ID used for LocRib
 }
 
 /// information saved about a connected peer
