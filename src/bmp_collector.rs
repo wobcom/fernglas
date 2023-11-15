@@ -8,10 +8,12 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc;
 use tokio_util::codec::length_delimited::LengthDelimitedCodec;
-use zettabgp::bmp::prelude::BmpMessagePeerHeader;
-use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
-use zettabgp::bmp::prelude::BmpMessageTermination;
+use zettabgp::bmp::prelude::{
+    BmpMessagePeerDown, BmpMessagePeerHeader, BmpMessagePeerUp, BmpMessageRouteMonitoring,
+    BmpMessageTermination,
+};
 use zettabgp::bmp::BmpMessage;
 
 fn table_selector_for_peer(
@@ -55,6 +57,46 @@ async fn process_route_monitoring(
     store.insert_bgp_update(session, rm.update).await;
 }
 
+pub fn run_peer(
+    client_addr: SocketAddr,
+    n: BmpMessagePeerUp,
+    store: &impl Store,
+) -> mpsc::Sender<Result<BmpMessageRouteMonitoring, BmpMessagePeerDown>> {
+    let (tx, mut rx) = mpsc::channel(16);
+    let store = store.clone();
+
+    tokio::task::spawn(async move {
+        trace!("{} {:?}", client_addr, n);
+        if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer)
+            .and_then(|store| store.session_id().cloned())
+        {
+            store.session_up(session_id, Session {}).await;
+        }
+
+        loop {
+            match rx.recv().await {
+                Some(Ok(rm)) => {
+                    process_route_monitoring(&store, client_addr, rm).await;
+                }
+                Some(Err(down_msg)) => {
+                    trace!("{} {:?}", client_addr, down_msg);
+                    break;
+                }
+                None => {
+                    trace!("{} {:?} stream ended", client_addr, n.peer);
+                    break;
+                }
+            }
+        }
+        if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer)
+            .and_then(|store| store.session_id().cloned())
+        {
+            store.session_down(session_id, None).await;
+        }
+    });
+
+    tx
+}
 pub async fn run_client(
     cfg: PeerConfig,
     io: TcpStream,
@@ -98,6 +140,11 @@ pub async fn run_client(
         .client_up(client_addr, RouteState::Selected, Client { client_name })
         .await;
 
+    let mut channels: HashMap<
+        IpAddr,
+        mpsc::Sender<Result<BmpMessageRouteMonitoring, BmpMessagePeerDown>>,
+    > = HashMap::new();
+
     loop {
         let msg = read
             .next()
@@ -105,25 +152,17 @@ pub async fn run_client(
             .ok_or(anyhow::anyhow!("unexpected end of stream"))?;
 
         match msg {
-            BmpMessage::RouteMonitoring(rm) => {
-                process_route_monitoring(store, client_addr, rm).await;
-            }
+            BmpMessage::RouteMonitoring(rm) => match channels.get(&rm.peer.peeraddress) {
+                Some(channel) => channel.send(Ok(rm)).await.unwrap(),
+                None => warn!("message for nonexisting peer: {:?}", &rm),
+            },
             BmpMessage::PeerUpNotification(n) => {
-                trace!("{} {:?}", client_addr, n);
-                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer)
-                    .and_then(|store| store.session_id().cloned())
-                {
-                    store.session_up(session_id, Session {}).await;
-                }
+                channels.insert(n.peer.peeraddress, run_peer(client_addr, n, store));
             }
-            BmpMessage::PeerDownNotification(n) => {
-                trace!("{} {:?}", client_addr, n);
-                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer)
-                    .and_then(|store| store.session_id().cloned())
-                {
-                    store.session_down(session_id, None).await;
-                }
-            }
+            BmpMessage::PeerDownNotification(n) => match channels.remove(&n.peer.peeraddress) {
+                Some(channel) => channel.send(Err(n)).await.unwrap(),
+                None => warn!("message for nonexisting peer: {:?}", &n),
+            },
             BmpMessage::Termination(n) => break Ok(n),
             msg => trace!("unknown message from {} {:#?}", client_addr, msg),
         }
