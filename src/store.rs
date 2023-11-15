@@ -1,10 +1,10 @@
-use std::pin::Pin;
-use futures_util::Stream;
-use std::net::{IpAddr, SocketAddr};
-use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use futures_util::Stream;
+use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use log::*;
+use serde::{Deserialize, Serialize};
+use std::net::{IpAddr, SocketAddr};
+use std::pin::Pin;
 
 pub type PathId = u32;
 
@@ -77,7 +77,7 @@ impl TableSelector {
         match self {
             TableSelector::LocRib { route_state, .. } => *route_state,
             TableSelector::PostPolicyAdjIn(_) => RouteState::Accepted,
-            TableSelector::PrePolicyAdjIn(_) => RouteState::Seen
+            TableSelector::PrePolicyAdjIn(_) => RouteState::Seen,
         }
     }
 }
@@ -139,27 +139,37 @@ pub struct Client {
 
 /// information saved about a connected peer
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Session {
-}
+pub struct Session {}
 
 impl Default for QueryLimits {
     fn default() -> Self {
         Self {
             max_results_per_table: 200,
-            max_results: 500
+            max_results: 500,
         }
     }
 }
 
 #[async_trait]
 pub trait Store: Clone + Send + Sync + 'static {
-    async fn update_route(&self, path_id: PathId, net: IpNet, table: TableSelector, attrs: RouteAttrs);
+    async fn update_route(
+        &self,
+        path_id: PathId,
+        net: IpNet,
+        table: TableSelector,
+        attrs: RouteAttrs,
+    );
 
     async fn withdraw_route(&self, path_id: PathId, net: IpNet, table: TableSelector);
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>>;
 
-    async fn client_up(&self, client_addr: SocketAddr, route_state: RouteState, client_data: Client);
+    async fn client_up(
+        &self,
+        client_addr: SocketAddr,
+        route_state: RouteState,
+        client_data: Client,
+    );
 
     async fn client_down(&self, client_addr: SocketAddr);
 
@@ -167,7 +177,11 @@ pub trait Store: Clone + Send + Sync + 'static {
 
     async fn session_down(&self, session: SessionId, new_state: Option<Session>);
 
-    async fn insert_bgp_update(&self, session: TableSelector, update: zettabgp::prelude::BgpUpdateMessage) {
+    async fn insert_bgp_update(
+        &self,
+        session: TableSelector,
+        update: zettabgp::prelude::BgpUpdateMessage,
+    ) {
         use zettabgp::prelude::*;
         let mut attrs: RouteAttrs = Default::default();
         let mut nexthop = None;
@@ -196,7 +210,10 @@ pub trait Store: Clone + Send + Sync + 'static {
                 BgpAttrItem::CommunityList(BgpCommunityList { value }) => {
                     let mut communities = vec![];
                     for community in value.into_iter() {
-                        communities.push(((community.value >> 16) as u16, (community.value & 0xff) as u16));
+                        communities.push((
+                            (community.value >> 16) as u16,
+                            (community.value & 0xff) as u16,
+                        ));
                     }
                     attrs.communities = Some(communities);
                 }
@@ -227,7 +244,7 @@ pub trait Store: Clone + Send + Sync + 'static {
                     }
                     attrs.large_communities = Some(communities);
                 }
-                _ => {},
+                _ => {}
             }
         }
         for net in bgp_addrs_to_nets(&update.updates).into_iter() {
@@ -240,7 +257,8 @@ pub trait Store: Clone + Send + Sync + 'static {
         for (net, nexthop) in update_nets {
             let mut attrs = attrs.clone();
             attrs.nexthop = nexthop;
-            self.update_route(net.0, net.1, session.clone(), attrs).await;
+            self.update_route(net.0, net.1, session.clone(), attrs)
+                .await;
         }
         for net in withdraw_nets {
             self.withdraw_route(net.0, net.1, session.clone()).await;
@@ -251,64 +269,52 @@ pub trait Store: Clone + Send + Sync + 'static {
 fn bgp_addrs_to_nets(addrs: &zettabgp::prelude::BgpAddrs) -> Vec<(PathId, IpNet)> {
     use zettabgp::prelude::*;
     match addrs {
-        BgpAddrs::IPV4UP(ref addrs) => {
-            addrs
-                .iter()
-                .filter_map(|addr| {
-                    let WithPathId { pathid, nlri } = addr;
-                    match Ipv4Net::new(nlri.addr, nlri.prefixlen) {
-                        Ok(net) => Some((*pathid, IpNet::V4(net))),
-                        Err(_) => {
-                            warn!("invalid BgpAddrs prefixlen");
-                            None
-                        }
+        BgpAddrs::IPV4UP(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| {
+                let WithPathId { pathid, nlri } = addr;
+                match Ipv4Net::new(nlri.addr, nlri.prefixlen) {
+                    Ok(net) => Some((*pathid, IpNet::V4(net))),
+                    Err(_) => {
+                        warn!("invalid BgpAddrs prefixlen");
+                        None
                     }
-                })
-                .collect()
-        }
-        BgpAddrs::IPV6UP(ref addrs) => {
-            addrs
-                .iter()
-                .filter_map(|addr| {
-                    let WithPathId { pathid, nlri } = addr;
-                    match Ipv6Net::new(nlri.addr, nlri.prefixlen) {
-                        Ok(net) => Some((*pathid, IpNet::V6(net))),
-                        Err(_) => {
-                            warn!("invalid BgpAddrs prefixlen");
-                            None
-                        }
+                }
+            })
+            .collect(),
+        BgpAddrs::IPV6UP(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| {
+                let WithPathId { pathid, nlri } = addr;
+                match Ipv6Net::new(nlri.addr, nlri.prefixlen) {
+                    Ok(net) => Some((*pathid, IpNet::V6(net))),
+                    Err(_) => {
+                        warn!("invalid BgpAddrs prefixlen");
+                        None
                     }
-                })
-                .collect()
-        }
-        BgpAddrs::IPV4U(ref addrs) => {
-            addrs
-                .iter()
-                .filter_map(|addr| {
-                    match Ipv4Net::new(addr.addr, addr.prefixlen) {
-                        Ok(net) => Some((0, IpNet::V4(net))),
-                        Err(_) => {
-                            warn!("invalid BgpAddrs prefixlen");
-                            None
-                        }
-                    }
-                })
-                .collect()
-        }
-        BgpAddrs::IPV6U(ref addrs) => {
-            addrs
-                .iter()
-                .filter_map(|addr| {
-                    match Ipv6Net::new(addr.addr, addr.prefixlen) {
-                        Ok(net) => Some((0, IpNet::V6(net))),
-                        Err(_) => {
-                            warn!("invalid BgpAddrs prefixlen");
-                            None
-                        }
-                    }
-                })
-                .collect()
-        }
-        _ => vec![]
+                }
+            })
+            .collect(),
+        BgpAddrs::IPV4U(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| match Ipv4Net::new(addr.addr, addr.prefixlen) {
+                Ok(net) => Some((0, IpNet::V4(net))),
+                Err(_) => {
+                    warn!("invalid BgpAddrs prefixlen");
+                    None
+                }
+            })
+            .collect(),
+        BgpAddrs::IPV6U(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| match Ipv6Net::new(addr.addr, addr.prefixlen) {
+                Ok(net) => Some((0, IpNet::V6(net))),
+                Err(_) => {
+                    warn!("invalid BgpAddrs prefixlen");
+                    None
+                }
+            })
+            .collect(),
+        _ => vec![],
     }
 }

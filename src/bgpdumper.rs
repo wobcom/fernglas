@@ -4,16 +4,16 @@
 use bytes::{Buf, BytesMut};
 use futures_util::Stream;
 use futures_util::StreamExt;
-use tokio::sync::oneshot;
-use tokio::net::TcpStream;
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use log::*;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::TcpStream;
+use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tokio_util::codec::FramedRead;
 use tokio_util::codec::LengthDelimitedCodec;
-use std::sync::Arc;
 use zettabgp::prelude::*;
-use log::*;
 
 pub struct BgpDumper {
     pub params: BgpSessionParams,
@@ -85,13 +85,20 @@ impl BgpDumper {
         tx
     }
     async fn next_message(&mut self) -> Result<(BgpMessageType, BytesMut), BgpError> {
-        let mut buf = self.read.next().await.ok_or(BgpError::static_str("unexpected end of stream"))??;
+        let mut buf = self
+            .read
+            .next()
+            .await
+            .ok_or(BgpError::static_str("unexpected end of stream"))??;
         let msg = self.params.decode_message_head(&buf)?;
         buf.advance(19);
         buf.truncate(msg.1);
         Ok((msg.0, buf))
     }
-    pub fn lifecycle(mut self) -> impl Stream<Item = Result<BgpUpdateMessage, Result<BgpNotificationMessage, BgpError>>> + Send {
+    pub fn lifecycle(
+        mut self,
+    ) -> impl Stream<Item = Result<BgpUpdateMessage, Result<BgpNotificationMessage, BgpError>>> + Send
+    {
         self.stop_keepalives = Some(self.start_keepalives());
 
         async_stream::try_stream! {

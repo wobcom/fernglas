@@ -1,7 +1,7 @@
-use futures_util::future::{join_all, select_all};
-use tokio::signal::unix::{signal, SignalKind};
 use fernglas::*;
+use futures_util::future::{join_all, select_all};
 use log::*;
+use tokio::signal::unix::{signal, SignalKind};
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -23,12 +23,18 @@ async fn main() -> anyhow::Result<()> {
     // Set up the exporter to collect metrics
     let _exporter = autometrics::global_metrics_exporter();
 
-    futures.push(tokio::task::spawn(api::run_api_server(cfg.api, store.clone(), shutdown_rx.clone())));
+    futures.push(tokio::task::spawn(api::run_api_server(
+        cfg.api,
+        store.clone(),
+        shutdown_rx.clone(),
+    )));
 
-    futures.extend(cfg.collectors.into_iter().map(|collector| {
-        match collector {
-            CollectorConfig::Bmp(cfg) => tokio::task::spawn(bmp_collector::run(cfg, store.clone(), shutdown_rx.clone())),
-            CollectorConfig::Bgp(cfg) => tokio::task::spawn(bgp_collector::run(cfg, store.clone(), shutdown_rx.clone())),
+    futures.extend(cfg.collectors.into_iter().map(|collector| match collector {
+        CollectorConfig::Bmp(cfg) => {
+            tokio::task::spawn(bmp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
+        }
+        CollectorConfig::Bgp(cfg) => {
+            tokio::task::spawn(bgp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
         }
     }));
 
@@ -52,4 +58,3 @@ async fn main() -> anyhow::Result<()> {
     join_all(futures).await;
     res
 }
-

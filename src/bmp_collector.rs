@@ -1,20 +1,23 @@
-use futures_util::{StreamExt, pin_mut};
-use futures_util::future::join_all;
-use bitvec::view::BitView;
+use crate::store::{Client, RouteState, Session, SessionId, Store, TableSelector};
 use bitvec::prelude::Msb0;
-use std::net::{IpAddr, SocketAddr};
-use std::collections::HashMap;
-use tokio_util::codec::length_delimited::LengthDelimitedCodec;
-use tokio::net::{TcpListener, TcpStream};
-use zettabgp::bmp::BmpMessage;
-use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
-use zettabgp::bmp::prelude::BmpMessagePeerHeader;
-use zettabgp::bmp::prelude::BmpMessageTermination;
-use crate::store::{Store, TableSelector, SessionId, Session, Client, RouteState};
-use serde::Deserialize;
+use bitvec::view::BitView;
+use futures_util::future::join_all;
+use futures_util::{pin_mut, StreamExt};
 use log::*;
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_util::codec::length_delimited::LengthDelimitedCodec;
+use zettabgp::bmp::prelude::BmpMessagePeerHeader;
+use zettabgp::bmp::prelude::BmpMessageRouteMonitoring;
+use zettabgp::bmp::prelude::BmpMessageTermination;
+use zettabgp::bmp::BmpMessage;
 
-fn table_selector_for_peer(client_addr: SocketAddr, peer: &BmpMessagePeerHeader) -> Option<TableSelector> {
+fn table_selector_for_peer(
+    client_addr: SocketAddr,
+    peer: &BmpMessagePeerHeader,
+) -> Option<TableSelector> {
     match (peer.peertype, peer.flags.view_bits::<Msb0>()[1]) {
         (0, false) => Some(TableSelector::PrePolicyAdjIn(SessionId {
             from_client: client_addr,
@@ -32,11 +35,19 @@ fn table_selector_for_peer(client_addr: SocketAddr, peer: &BmpMessagePeerHeader)
     }
 }
 
-async fn process_route_monitoring(store: &impl Store, client_addr: SocketAddr, rm: BmpMessageRouteMonitoring) {
+async fn process_route_monitoring(
+    store: &impl Store,
+    client_addr: SocketAddr,
+    rm: BmpMessageRouteMonitoring,
+) {
     let session = match table_selector_for_peer(client_addr, &rm.peer) {
         Some(session) => session,
         None => {
-            trace!("unknown peer type {} flags {:x}", rm.peer.peertype, rm.peer.flags);
+            trace!(
+                "unknown peer type {} flags {:x}",
+                rm.peer.peertype,
+                rm.peer.flags
+            );
             return;
         }
     };
@@ -44,7 +55,12 @@ async fn process_route_monitoring(store: &impl Store, client_addr: SocketAddr, r
     store.insert_bgp_update(session, rm.update).await;
 }
 
-pub async fn run_client(cfg: PeerConfig, io: TcpStream, client_addr: SocketAddr, store: &impl Store) -> anyhow::Result<BmpMessageTermination> {
+pub async fn run_client(
+    cfg: PeerConfig,
+    io: TcpStream,
+    client_addr: SocketAddr,
+    store: &impl Store,
+) -> anyhow::Result<BmpMessageTermination> {
     let read = LengthDelimitedCodec::builder()
         .length_field_offset(1)
         .length_field_type::<u32>()
@@ -74,11 +90,19 @@ pub async fn run_client(cfg: PeerConfig, io: TcpStream, client_addr: SocketAddr,
             anyhow::bail!("expected initiation message, got: {:?}", other);
         }
     };
-    let client_name = cfg.name_override.or(init_msg.sys_name).unwrap_or(client_addr.ip().to_string());
-    store.client_up(client_addr, RouteState::Selected, Client { client_name }).await;
+    let client_name = cfg
+        .name_override
+        .or(init_msg.sys_name)
+        .unwrap_or(client_addr.ip().to_string());
+    store
+        .client_up(client_addr, RouteState::Selected, Client { client_name })
+        .await;
 
     loop {
-        let msg = read.next().await.ok_or(anyhow::anyhow!("unexpected end of stream"))?;
+        let msg = read
+            .next()
+            .await
+            .ok_or(anyhow::anyhow!("unexpected end of stream"))?;
 
         match msg {
             BmpMessage::RouteMonitoring(rm) => {
@@ -86,13 +110,17 @@ pub async fn run_client(cfg: PeerConfig, io: TcpStream, client_addr: SocketAddr,
             }
             BmpMessage::PeerUpNotification(n) => {
                 trace!("{} {:?}", client_addr, n);
-                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer).and_then(|store| store.session_id().cloned()) {
+                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer)
+                    .and_then(|store| store.session_id().cloned())
+                {
                     store.session_up(session_id, Session {}).await;
                 }
             }
             BmpMessage::PeerDownNotification(n) => {
                 trace!("{} {:?}", client_addr, n);
-                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer).and_then(|store| store.session_id().cloned()) {
+                if let Some(session_id) = table_selector_for_peer(client_addr, &n.peer)
+                    .and_then(|store| store.session_id().cloned())
+                {
                     store.session_down(session_id, None).await;
                 }
             }
@@ -115,7 +143,11 @@ pub struct BmpCollectorConfig {
     pub default_peer_config: Option<PeerConfig>,
 }
 
-pub async fn run(cfg: BmpCollectorConfig, store: impl Store, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
+pub async fn run(
+    cfg: BmpCollectorConfig,
+    store: impl Store,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+) -> anyhow::Result<()> {
     let listener = TcpListener::bind(cfg.bind).await?;
     let mut running_tasks = vec![];
     loop {

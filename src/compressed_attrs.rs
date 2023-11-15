@@ -1,8 +1,8 @@
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::sync::{Arc, Weak};
-use weak_table::WeakHashSet;
 use weak_table::traits::WeakKey;
+use weak_table::WeakHashSet;
 
 use crate::store::*;
 
@@ -45,16 +45,25 @@ where
 impl Caches {
     pub fn compress_route_attrs(&mut self, route: RouteAttrs) -> Arc<CompressedRouteAttrs> {
         let route = CompressedRouteAttrs {
-            as_path: route.as_path.map(|x| self.as_path_cache.get_or_insert(x).clone()),
-            communities: route.communities.map(|x| self.communities_list_cache.get_or_insert(x).clone()),
+            as_path: route
+                .as_path
+                .map(|x| self.as_path_cache.get_or_insert(x).clone()),
+            communities: route
+                .communities
+                .map(|x| self.communities_list_cache.get_or_insert(x).clone()),
             large_communities: route.large_communities.map(|x| {
-                let list = x.into_iter().map(|c| self.large_communities_cache.get_or_insert(c)).collect();
-                self.large_communities_list_cache.get_or_insert(list).clone()
+                let list = x
+                    .into_iter()
+                    .map(|c| self.large_communities_cache.get_or_insert(c))
+                    .collect();
+                self.large_communities_list_cache
+                    .get_or_insert(list)
+                    .clone()
             }),
             local_pref: route.local_pref,
             med: route.med,
             origin: route.origin,
-            nexthop: route.nexthop
+            nexthop: route.nexthop,
         };
         self.route_attrs_cache.get_or_insert(route)
     }
@@ -72,10 +81,13 @@ pub fn decompress_route_attrs(route: &CompressedRouteAttrs) -> RouteAttrs {
     RouteAttrs {
         as_path: route.as_path.as_ref().map(|x| (**x).clone()),
         communities: route.communities.as_ref().map(|x| (**x).clone()),
-        large_communities: route.large_communities.as_ref().map(|x| x.iter().map(|x| **x).collect()),
+        large_communities: route
+            .large_communities
+            .as_ref()
+            .map(|x| x.iter().map(|x| **x).collect()),
         local_pref: route.local_pref,
         med: route.med,
         origin: route.origin.clone(),
-        nexthop: route.nexthop
+        nexthop: route.nexthop,
     }
 }

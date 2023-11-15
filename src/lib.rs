@@ -1,11 +1,11 @@
+pub mod api;
+pub mod bgp_collector;
+mod bgpdumper;
+pub mod bmp_collector;
+mod compressed_attrs;
 pub mod store;
 pub mod store_impl;
 pub mod table_impl;
-pub mod bmp_collector;
-mod bgpdumper;
-pub mod bgp_collector;
-pub mod api;
-mod compressed_attrs;
 
 use serde::Deserialize;
 
@@ -40,4 +40,3 @@ pub struct Config {
     pub collectors: Vec<CollectorConfig>,
     pub api: api::ApiServerConfig,
 }
-

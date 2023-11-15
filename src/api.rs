@@ -1,16 +1,16 @@
-use axum::body::StreamBody;
-use axum::http::StatusCode;
-use axum::extract::{Query as AxumQuery, State};
-use axum::response::IntoResponse;
-use axum::Router;
-use axum::routing::get;
 use crate::store::{Query, QueryLimits, Store};
-use futures_util::{StreamExt, FutureExt};
-use std::sync::Arc;
+use axum::body::StreamBody;
+use axum::extract::{Query as AxumQuery, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::routing::get;
+use axum::Router;
+use futures_util::{FutureExt, StreamExt};
+use log::*;
+use serde::Deserialize;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use serde::Deserialize;
-use log::*;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiServerConfig {
@@ -19,17 +19,22 @@ pub struct ApiServerConfig {
     query_limits: QueryLimits,
 }
 
-async fn query<T: Store>(State((cfg, store)): State<(Arc<ApiServerConfig>, T)>, AxumQuery(mut query): AxumQuery<Query>) -> impl IntoResponse {
+async fn query<T: Store>(
+    State((cfg, store)): State<(Arc<ApiServerConfig>, T)>,
+    AxumQuery(mut query): AxumQuery<Query>,
+) -> impl IntoResponse {
     trace!("request: {}", serde_json::to_string_pretty(&query).unwrap());
     let mut limits = query.limits.take().unwrap_or(cfg.query_limits.clone());
     limits.max_results = std::cmp::min(limits.max_results, cfg.query_limits.max_results);
-    limits.max_results_per_table = std::cmp::min(limits.max_results_per_table, cfg.query_limits.max_results_per_table);
+    limits.max_results_per_table = std::cmp::min(
+        limits.max_results_per_table,
+        cfg.query_limits.max_results_per_table,
+    );
     query.limits = Some(limits);
-    let stream = store.get_routes(query)
-        .map(|route| {
-            let json = serde_json::to_string(&route).unwrap();
-             Ok::<_, Infallible>(format!("{}\n", json))
-        });
+    let stream = store.get_routes(query).map(|route| {
+        let json = serde_json::to_string(&route).unwrap();
+        Ok::<_, Infallible>(format!("{}\n", json))
+    });
     StreamBody::new(stream)
 }
 
@@ -47,7 +52,11 @@ pub async fn get_metrics() -> (StatusCode, String) {
     }
 }
 
-pub async fn run_api_server<T: Store>(cfg: ApiServerConfig, store: T, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
+pub async fn run_api_server<T: Store>(
+    cfg: ApiServerConfig,
+    store: T,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+) -> anyhow::Result<()> {
     let make_service = Router::new()
         .nest("/api", make_api(cfg.clone(), store))
         .route("/metrics", get(get_metrics))
