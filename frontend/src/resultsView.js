@@ -15,7 +15,7 @@ const resultsTemplate = (query, results, done) => html`
 						${results.some(result => result.peer_address) ? html`<th>Peer</th>` : ``}
 						<th>Prefix</th>
 						<th>AS Path</th>
-						<th>Large Communities</th>
+						<th>Communities</th>
 						<th>Origin</th>
 						<th>MED</th>
 						<th>Local Pref</th>
@@ -30,7 +30,7 @@ const resultsTemplate = (query, results, done) => html`
 							${results.some(result => result.peer_address) ? html`<td><span>${result.peer_address}</span></td>` : ``}
 							<td><span>${result.net}</span></td>
 							<td><span>${result.as_path.join(" ")}</span></td>
-							<td><span>${(result.large_communities || []).map(community => `(${community.join(",")})`).join(" ")}</span></td>
+							<td><span>${[...(result.large_communities || []), ...(result.communities || [])].map(community => html`<div class="tag">${community.join(" ")}</div>`)}</span></td>
 							<td><span>${result.origin}</span></td>
 							<td><span>${result.med}</span></td>
 							<td><span>${result.local_pref}</span></td>

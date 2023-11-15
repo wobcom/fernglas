@@ -126,6 +126,7 @@ body {
         width: 100%;
         text-decoration: none;
         color: black;
+	flex-wrap: wrap;
 }
 .results thead>tr {
         border-bottom: 2px solid #ccc;
@@ -141,6 +142,14 @@ body {
 
 .results tbody tr:hover td {
         background-color: transparent;
+}
+
+.tag {
+	background-color: #25c;
+	color: white;
+	margin: .1em .15em;
+	padding: .1em .5em;
+	border-radius: .6em;
 }
 
 @media (min-width: 1000px) {
