@@ -38,9 +38,16 @@ async fn query<T: Store>(
     StreamBody::new(stream)
 }
 
+async fn routers<T: Store>(
+    State((cfg, store)): State<(Arc<ApiServerConfig>, T)>,
+) -> impl IntoResponse {
+    serde_json::to_string(&store.get_routers()).unwrap()
+}
+
 fn make_api<T: Store>(cfg: ApiServerConfig, store: T) -> Router {
     Router::new()
         .route("/query", get(query::<T>))
+        .route("/routers", get(routers::<T>))
         .with_state((Arc::new(cfg), store))
 }
 

@@ -185,6 +185,10 @@ impl Store for InMemoryStore {
         )
     }
 
+    fn get_routers(&self) -> HashMap<SocketAddr, Client> {
+        self.clients.lock().unwrap().clone()
+    }
+
     async fn client_up(
         &self,
         client_addr: SocketAddr,

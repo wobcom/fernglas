@@ -164,6 +164,8 @@ pub trait Store: Clone + Send + Sync + 'static {
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>>;
 
+    fn get_routers(&self) -> HashMap<SocketAddr, Client>;
+
     async fn client_up(
         &self,
         client_addr: SocketAddr,
