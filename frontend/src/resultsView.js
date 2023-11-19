@@ -146,7 +146,7 @@ export const resultsView = async (query) => {
 		searchParams.set("Router", Object.values(routers).find(router => router.client_name == param_router).router_id);
 	}
 
-	render(resultsTemplate({}, query, [], false), document.getElementById('content'));
+	render(resultsTemplate(query, [], false), document.getElementById('content'));
 
 	const response = await fetch("/api/query?" + searchParams);
 	if (!response.ok) {
