@@ -2,12 +2,13 @@ import { html, render } from 'lit-html';
 import { go } from './router.js';
 import { searchTemplate } from './search.js';
 import ndjsonStream from 'can-ndjson-stream';
+import { routers } from './cache.js';
 
 const communities = {
 };
 
-const resultsTemplate = (routers, query, results, done) => html`
-	${searchTemplate(routers, query)}
+const resultsTemplate = (query, results, done) => html`
+	${searchTemplate(query)}
 
 	<div class="results">
 		${results.length > 0 ? html`
@@ -140,19 +141,14 @@ export const resultsView = async (query) => {
 	const searchParams = new URLSearchParams(optionsString);
 	searchParams.append(mode, `${ip}/${prefixLength}`);
 
-	const routersProm = fetch("/api/routers").then(resp => resp.json());
-
 	const param_router = searchParams.get("Router");
 	if (param_router !== null) {
-		const routers = await routersProm;
 		searchParams.set("Router", Object.values(routers).find(router => router.client_name == param_router).router_id);
 	}
 
 	render(resultsTemplate({}, query, [], false), document.getElementById('content'));
-	const [routers, response] = await Promise.all([
-		routersProm,
-		fetch("/api/query?" + searchParams)
-	]);
+
+	const response = await fetch("/api/query?" + searchParams);
 	if (!response.ok) {
 		render(errorTemplate(query, {
 			text: "No data",
@@ -169,7 +165,7 @@ export const resultsView = async (query) => {
 		if (result.value) {
 			results.push(result.value);
 		}
-		render(resultsTemplate(routers, query, processResults(results), result.done), document.getElementById('content'));
+		render(resultsTemplate(query, processResults(results), result.done), document.getElementById('content'));
 	}
 	if (results.length == 0) {
 		render(errorTemplate(query, {

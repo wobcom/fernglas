@@ -1,5 +1,6 @@
 import { html, render } from 'lit-html';
 import { go } from './router.js';
+import { routers } from './cache.js';
 
 const modes = ["MostSpecific", "Exact", "OrLonger", "Contains"];
 
@@ -28,7 +29,7 @@ const formSubmit = (e) => {
 	return false;
 };
 
-export const searchTemplate = (routers, [ mode, ip, prefixLength, optionsString ]) => html`
+export const searchTemplate = ([ mode, ip, prefixLength, optionsString ]) => html`
 	<form id="input" @submit=${formSubmit}>
 		<select name="query-mode" id="query-mode" @change=${() => document.getElementById("input-submit").click()}>
 			${modes.map(name => html`
