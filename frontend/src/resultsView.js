@@ -54,7 +54,7 @@ const resultsTemplate = (query, results, done) => html`
 `;
 
 const errorTemplate = (query, data) => html`
-	${searchTemplate({}, query)}
+	${searchTemplate(query)}
 	<div id="error">
 		<h1 id="error-text">${data.text}</h1>
 		<sub id="error-descr">${data.description}</sub>
