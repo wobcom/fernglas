@@ -152,11 +152,14 @@ body {
 }
 
 .tag {
-	background-color: #25c;
+	background-color: #444;
 	color: white;
 	margin: .1em .15em;
 	padding: .1em .5em;
 	border-radius: .6em;
+}
+.tag.named {
+	background-color: #25c;
 }
 
 @media (min-width: 1000px) {

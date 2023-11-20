@@ -2,10 +2,32 @@ import { html, render } from 'lit-html';
 import { go } from './router.js';
 import { searchTemplate } from './search.js';
 import ndjsonStream from 'can-ndjson-stream';
-import { routers } from './cache.js';
+import { routers, communities } from './cache.js';
 
-const communities = {
-};
+const resultTemplate = (result, havePeerColumn) => html`
+	<tr class=${result.state}>
+		<td><span>${result.client_name}</span></td>
+		${havePeerColumn ? html`<td><span>${result.peer_address}</span></td>` : ``}
+		<td><span>${result.net}</span></td>
+		<td><span>${result.as_path.join(" ")}</span></td>
+		<td><span>${[
+			...(result.large_communities || []),
+			...(result.communities || [])
+		]
+			.map(community => community.join(":"))
+			.map(community => community in communities ?
+				html`<div class="tag named">${communities[community]}</div>`
+				:
+				html`<div class="tag">${community}</div>`
+			)
+		}</span></td>
+		<td><span>${result.origin}</span></td>
+		<td><span>${result.med}</span></td>
+		<td><span>${result.local_pref}</span></td>
+		<td><span>${Object.values(routers).find(router => router.router_id === result.nexthop)?.client_name || result.nexthop}</span></td>
+		<td><span>${result.state}</span></td>
+	</tr>
+`;
 
 const resultsTemplate = (query, results, done) => html`
 	${searchTemplate(query)}
@@ -28,20 +50,7 @@ const resultsTemplate = (query, results, done) => html`
 					</tr>
 				</thead>
 				<tbody>
-					${results.map(result => html`
-						<tr class=${result.state}>
-							<td><span>${result.client_name}</span></td>
-							${results.some(result => result.peer_address) ? html`<td><span>${result.peer_address}</span></td>` : ``}
-							<td><span>${result.net}</span></td>
-							<td><span>${result.as_path.join(" ")}</span></td>
-							<td><span>${[...(result.large_communities || []), ...(result.communities || [])].map(community => community.join(":")).map(community => html`<div class="tag">${communities[community] || community}</div>`)}</span></td>
-							<td><span>${result.origin}</span></td>
-							<td><span>${result.med}</span></td>
-							<td><span>${result.local_pref}</span></td>
-							<td><span>${Object.values(routers).find(router => router.router_id === result.nexthop)?.client_name || result.nexthop}</span></td>
-							<td><span>${result.state}</span></td>
-						</tr>
-					`)}
+					${results.map(result => resultTemplate(result, results.some(result => result.peer_address)))}
 				</tbody>
 			</table>
 		` : ''}
