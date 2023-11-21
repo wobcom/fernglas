@@ -11,7 +11,7 @@ import { initCache } from './cache.js';
 	await initCache();
 
 	route(/^\/(\?.*)?$/, historyView);
-	route(/^\/([^\/]+)\/(.+)$/, resultsView);
+	route(/^\/([^\/]+)\/([^?]+)(\?.*)?$/, resultsView);
 
 	document.getElementById('loader-overlay').innerHTML = '';
 	hideDiv('loader-overlay');
