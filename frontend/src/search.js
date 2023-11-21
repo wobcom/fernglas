@@ -9,14 +9,6 @@ const formSubmit = (e) => {
 	const data = new FormData(e.target);
 	let val = data.get("input-field");
 	const mode = data.get("query-mode");
-	if (val.indexOf("/") === -1) {
-		if (val.indexOf(".") !== -1) {
-			val += "/32";
-		}
-		if (val.indexOf(":") !== -1) {
-			val += "/128";
-		}
-	}
 	const router = data.get("router-sel");
 	let res = "#/";
 	if (val !== "") {
