@@ -111,20 +111,20 @@ pub enum TableQuery {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub enum NetQuery {
-    Contains(IpNet),
-    MostSpecific(IpNet),
-    Exact(IpNet),
-    OrLonger(IpNet),
+pub enum NetQuery<T = IpNet> {
+    Contains(T),
+    MostSpecific(T),
+    Exact(T),
+    OrLonger(T),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Query {
+pub struct Query<T = IpNet> {
     #[serde(flatten)]
     pub table_query: Option<TableQuery>,
     #[serde(flatten)]
-    pub net_query: NetQuery,
+    pub net_query: NetQuery<T>,
     pub limits: Option<QueryLimits>,
     #[serde(default)]
     pub as_path_regex: Option<String>,

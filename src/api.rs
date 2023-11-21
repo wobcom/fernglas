@@ -1,14 +1,16 @@
-use crate::store::{Query, QueryLimits, Store, QueryResult, RouteAttrs, RouterId, ResolvedRouteAttrs, ResolvedNexthop};
+use crate::store::{Query, QueryLimits, Store, QueryResult, RouteAttrs, RouterId, ResolvedRouteAttrs, ResolvedNexthop, NetQuery};
 use axum::body::StreamBody;
 use axum::extract::{Query as AxumQuery, State};
 use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::response::{Response, IntoResponse};
 use axum::routing::get;
 use axum::Router;
 use hickory_resolver::TokioAsyncResolver;
 use futures_util::{FutureExt, StreamExt};
 use log::*;
 use serde::{Serialize, Deserialize};
+use ipnet::IpNet;
+use std::net::IpAddr;
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
@@ -36,12 +38,62 @@ pub struct RouteAttrsResolved {
     nexthop_resolved: Option<NexthopResolved>,
 }
 
+// Make our own error that wraps `anyhow::Error`.
+struct AppError(anyhow::Error);
+
+// Tell axum how to convert `AppError` into a response.
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Something went wrong: {}", self.0),
+        )
+            .into_response()
+    }
+}
+
+// This enables using `?` on functions that return `Result<_, anyhow::Error>` to turn them into
+// `Result<_, AppError>`. That way you don't need to do that manually.
+impl<E> From<E> for AppError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        Self(err.into())
+    }
+}
+
+async fn parse_or_resolve(resolver: &TokioAsyncResolver, name: String) -> anyhow::Result<IpNet> {
+    if let Ok(net) = name.parse() {
+        return Ok(net);
+    }
+    if let Ok(addr) = name.parse::<IpAddr>() {
+        return Ok(addr.into());
+    }
+
+    Ok(resolver.lookup_ip(&name).await?.iter().next().ok_or(anyhow::anyhow!("Name resolution failure"))?.into())
+}
 
 async fn query<T: Store>(
     State((cfg, resolver, store)): State<(Arc<ApiServerConfig>, TokioAsyncResolver, T)>,
-    AxumQuery(mut query): AxumQuery<Query>,
-) -> impl IntoResponse {
+    AxumQuery(query): AxumQuery<Query<String>>,
+) -> Result<impl IntoResponse, AppError> {
     trace!("request: {}", serde_json::to_string_pretty(&query).unwrap());
+
+    let net_query = match query.net_query {
+        NetQuery::Contains(name) => NetQuery::Contains(parse_or_resolve(&resolver, name).await?),
+        NetQuery::MostSpecific(name) => NetQuery::MostSpecific(parse_or_resolve(&resolver, name).await?),
+        NetQuery::Exact(name) => NetQuery::Exact(parse_or_resolve(&resolver, name).await?),
+        NetQuery::OrLonger(name) => NetQuery::OrLonger(parse_or_resolve(&resolver, name).await?),
+    };
+
+    let mut query = Query {
+        table_query: query.table_query,
+        net_query,
+        limits: query.limits,
+        as_path_regex: query.as_path_regex
+    };
+
     let mut limits = query.limits.take().unwrap_or(cfg.query_limits.clone());
     limits.max_results = std::cmp::min(limits.max_results, cfg.query_limits.max_results);
     limits.max_results_per_table = std::cmp::min(
@@ -75,7 +127,7 @@ async fn query<T: Store>(
         let json = serde_json::to_string(&route).unwrap();
         Ok::<_, Infallible>(format!("{}\n", json))
     });
-    StreamBody::new(stream)
+    Ok(StreamBody::new(stream))
 }
 
 async fn routers<T: Store>(
