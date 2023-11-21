@@ -15,16 +15,19 @@ const resultTemplate = (result, havePeerColumn) => html`
 			...(result.communities || [])
 		]
 			.map(community => community.join(":"))
-			.map(community => community in communities ?
-				html`<div class="tag named">${communities[community]}</div>`
-				:
-				html`<div class="tag">${community}</div>`
+			.map(community => community in communities
+				? html`<div class="tag named tooltip" title=${community}>${communities[community]}</div>`
+				: html`<div class="tag">${community}</div>`
 			)
 		}</span></td>
 		<td><span>${result.origin}</span></td>
 		<td><span>${result.med}</span></td>
 		<td><span>${result.local_pref}</span></td>
-		<td><span>${Object.values(routers).find(router => router.router_id === result.nexthop)?.client_name || result.nexthop}</span></td>
+		<td>
+			${result?.resolved_nexthop?.ReverseDns !== undefined
+			? html`<span title=${result.nexthop}>${result?.resolved_nexthop?.ReverseDns}</span>`
+			: html`<span>${result.nexthop}</span>`}
+		</td>
 		<td><span>${result.state}</span></td>
 	</tr>
 `;
