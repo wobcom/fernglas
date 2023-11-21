@@ -28,7 +28,7 @@ export const searchTemplate = ([ mode, ip, optionsString ]) => html`
 				<option value=${name} ?selected=${mode === name}>${name}</option>
 			`)}
 		</select>
-		<input name="input-field" id="input-field" type="text" spellcheck=false" autocomplete="new-password" autocorrect="off" autocapitalize="off" value=${!!ip ? ip : ``} />
+		<input name="input-field" id="input-field" type="text" spellcheck=false" autocomplete="new-password" autocorrect="off" autocapitalize="off" placeholder="Enter an IP address, prefix or DNS name..." value=${!!ip ? ip : ``} />
 		<select name="router-sel" id="router-sel" @change=${() => document.getElementById("input-submit").click()}>
 			<option value="all">on all</option>
 			${[...new Set(Object.values(routers).map(router => router.client_name))].map(name => html`
