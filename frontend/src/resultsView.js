@@ -145,10 +145,10 @@ const processResults = (results) => {
 
 export const resultsView = async (query) => {
 
-	const [ mode, ip, prefixLength, optionsString ] = query;
+	const [ mode, ip, optionsString ] = query;
 
 	const searchParams = new URLSearchParams(optionsString);
-	searchParams.append(mode, `${ip}/${prefixLength}`);
+	searchParams.append(mode, ip);
 
 	const param_router = searchParams.get("Router");
 	if (param_router !== null) {
