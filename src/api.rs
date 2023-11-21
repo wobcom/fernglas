@@ -5,6 +5,7 @@ use axum::http::StatusCode;
 use axum::response::{Response, IntoResponse};
 use axum::routing::get;
 use axum::Router;
+use hickory_resolver::config::LookupIpStrategy;
 use hickory_resolver::TokioAsyncResolver;
 use futures_util::{FutureExt, StreamExt};
 use log::*;
@@ -136,11 +137,16 @@ async fn routers<T: Store>(
     serde_json::to_string(&store.get_routers()).unwrap()
 }
 
-fn make_api<T: Store>(cfg: ApiServerConfig, store: T) -> Router {
-    Router::new()
+fn make_api<T: Store>(cfg: ApiServerConfig, store: T) -> anyhow::Result<Router> {
+    let resolver = {
+        let (rcfg, mut ropts) = hickory_resolver::system_conf::read_system_conf()?;
+        ropts.ip_strategy = LookupIpStrategy::Ipv6thenIpv4; // strange people set strange default settings
+        TokioAsyncResolver::tokio(rcfg, ropts)
+    };
+    Ok(Router::new()
         .route("/query", get(query::<T>))
         .route("/routers", get(routers::<T>))
-        .with_state((Arc::new(cfg), TokioAsyncResolver::tokio_from_system_conf().unwrap(), store))
+        .with_state((Arc::new(cfg), resolver, store)))
 }
 
 /// This handler serializes the metrics into a string for Prometheus to scrape
@@ -157,7 +163,7 @@ pub async fn run_api_server<T: Store>(
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     let make_service = Router::new()
-        .nest("/api", make_api(cfg.clone(), store))
+        .nest("/api", make_api(cfg.clone(), store)?)
         .route("/metrics", get(get_metrics))
         .into_make_service();
 
