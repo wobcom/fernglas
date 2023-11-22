@@ -17,11 +17,17 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+#[cfg(feature = "embed-static")]
+static STATIC_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/static");
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiServerConfig {
     bind: SocketAddr,
     #[serde(default)]
     query_limits: QueryLimits,
+    #[cfg(feature = "embed-static")]
+    #[serde(default)]
+    serve_static: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -157,14 +163,49 @@ pub async fn get_metrics() -> (StatusCode, String) {
     }
 }
 
+#[cfg(feature = "embed-static")]
+async fn static_path(axum::extract::Path(path): axum::extract::Path<String>) -> impl IntoResponse {
+    use axum::body::Full;
+    use axum::body::Empty;
+    use axum::http::header;
+    use axum::http::header::HeaderValue;
+
+    let path = path.trim_start_matches('/');
+    let mime_type = mime_guess::from_path(path).first_or_text_plain();
+
+    match STATIC_DIR.get_file(path) {
+        None => Response::builder()
+            .status(StatusCode::NOT_FOUND)
+            .body(axum::body::boxed(Empty::new()))
+            .unwrap(),
+        Some(file) => Response::builder()
+            .status(StatusCode::OK)
+            .header(
+                header::CONTENT_TYPE,
+                HeaderValue::from_str(mime_type.as_ref()).unwrap(),
+            )
+            .body(axum::body::boxed(Full::from(file.contents())))
+            .unwrap(),
+    }
+}
+
 pub async fn run_api_server<T: Store>(
     cfg: ApiServerConfig,
     store: T,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
-    let make_service = Router::new()
+    let mut router = Router::new();
+
+    #[cfg(feature = "embed-static")]
+    if cfg.serve_static {
+        router = router.route("/*path", get(static_path))
+    }
+
+    router = router
         .nest("/api", make_api(cfg.clone(), store)?)
-        .route("/metrics", get(get_metrics))
+        .route("/metrics", get(get_metrics));
+
+    let make_service = router
         .into_make_service();
 
     axum::Server::bind(&cfg.bind)

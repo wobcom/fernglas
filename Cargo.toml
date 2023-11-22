@@ -33,7 +33,12 @@ nibbletree = { version = "0.1.0", path = "./nibbletree", features = ["ipnet"] }
 autometrics = { version = "0.3.0", features = ["prometheus-exporter"] }
 zettabgp = "0.3.4"
 hickory-resolver = "0.24.0"
+include_dir = { version = "0.7.3", optional = true }
+mime_guess = { version = "2.0.4", optional = true }
 
 [[bin]]
 name = "fernglas-configcheck"
 path = "src/config_check.rs"
+
+[features]
+embed-static = ["include_dir", "mime_guess"]

@@ -12,6 +12,11 @@
 
         rustPlatform.buildRustPackage {
           pname = "fernglas";
+
+          preBuild = ''
+            cp -r ${final.buildPackages.fernglas-frontend} ./static
+          '';
+
           version =
             self.shortRev or "dirty-${toString self.lastModifiedDate}";
           src = lib.cleanSourceWith {
@@ -25,7 +30,11 @@
             };
           };
 
-          cargoBuildFlags = lib.optionals (stdenv.hostPlatform.isMusl && stdenv.hostPlatform.isStatic) [ "--features" "mimalloc" ];
+          cargoBuildFlags = lib.optionals (stdenv.hostPlatform.isMusl && stdenv.hostPlatform.isStatic) [
+            "--features" "mimalloc"
+          ] ++ [
+            "--features" "embed-static"
+          ];
           cargoLock = {
             lockFile = ./Cargo.lock;
             allowBuiltinFetchGit = true;
