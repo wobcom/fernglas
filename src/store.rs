@@ -235,7 +235,7 @@ pub trait Store: Clone + Send + Sync + 'static {
                     for community in value.into_iter() {
                         communities.push((
                             (community.value >> 16) as u16,
-                            (community.value & 0xff) as u16,
+                            (community.value & 0xffff) as u16,
                         ));
                     }
                     attrs.communities = Some(communities);
