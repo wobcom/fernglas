@@ -138,7 +138,7 @@ async fn query<T: Store>(
 }
 
 async fn routers<T: Store>(
-    State((cfg, _, store)): State<(Arc<ApiServerConfig>, TokioAsyncResolver, T)>,
+    State((_, _, store)): State<(Arc<ApiServerConfig>, TokioAsyncResolver, T)>,
 ) -> impl IntoResponse {
     serde_json::to_string(&store.get_routers()).unwrap()
 }
