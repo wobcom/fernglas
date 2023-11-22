@@ -62,9 +62,10 @@ async fn main() -> anyhow::Result<()> {
             info!("shutting down on signal SIGTERM");
             Ok(())
         }
-        task_ended = select_all(&mut futures) => {
+        (result, idx, _) = select_all(&mut futures) => {
             warn!("shutting down because task unexpectedly ended");
-            task_ended.0?
+            futures.remove(idx);
+            result?
         }
     };
     shutdown_tx.send(true)?;
