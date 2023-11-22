@@ -16,7 +16,7 @@ module.exports = {
     static: dist,
     proxy: {
       "/api/": {
-        target: 'http://localhost:3000'
+        target: 'https://lg.staging.service.wobcom.de'
       }
     },
   },

@@ -8,22 +8,20 @@ pub mod store_impl;
 pub mod table_impl;
 
 use serde::Deserialize;
+use std::collections::HashMap;
 
-pub fn config_path_from_args() -> String {
-    let mut args = std::env::args();
-    let program = args.next().unwrap();
-    let config_path = match args.next() {
-        Some(v) => v,
-        _ => usage(&program),
-    };
+pub fn config_path_from_args() -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    let config_path = args.next();
     if args.next().is_some() {
-        usage(&program);
+        usage();
     }
 
     config_path
 }
 
-fn usage(program: &str) -> ! {
+pub fn usage() -> ! {
+    let program = std::env::args().next().unwrap();
     eprintln!("usage: {} <CONFIG>", program);
     std::process::exit(1)
 }
@@ -37,6 +35,9 @@ pub enum CollectorConfig {
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
-    pub collectors: Vec<CollectorConfig>,
+    pub collectors: HashMap<String, CollectorConfig>,
     pub api: api::ApiServerConfig,
+    /// Only check config and exit
+    #[serde(default)]
+    pub config_check: bool,
 }

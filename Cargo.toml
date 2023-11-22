@@ -24,7 +24,6 @@ rayon = "1.6.1"
 regex = "1.7.1"
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.91"
-serde_yaml = "0.9.16"
 tokio = { version = "1.23.0", features = ["rt", "macros", "time", "rt-multi-thread", "io-util", "fs", "signal"] }
 tokio-stream = "0.1.11"
 tokio-util = { version = "0.7.4", features = ["codec"] }
@@ -35,10 +34,7 @@ zettabgp = "0.3.4"
 hickory-resolver = "0.24.0"
 include_dir = { version = "0.7.3", optional = true }
 mime_guess = { version = "2.0.4", optional = true }
-
-[[bin]]
-name = "fernglas-configcheck"
-path = "src/config_check.rs"
+figment = { version = "0.10.12", features = ["yaml", "env"] }
 
 [features]
 embed-static = ["include_dir", "mime_guess"]

@@ -157,7 +157,7 @@
           name = "config.yaml";
           text = builtins.toJSON cfg.settings;
           checkPhase = ''
-            ${fernglasPkgs.fernglas}/bin/fernglas-configcheck $out
+            RUST_LOG=trace FERNGLAS_CONFIG_CHECK=true ${fernglasPkgs.fernglas}/bin/fernglas $out
           '';
         };
       in {

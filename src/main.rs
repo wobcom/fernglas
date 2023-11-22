@@ -2,6 +2,8 @@ use fernglas::*;
 use futures_util::future::{join_all, select_all};
 use log::*;
 use tokio::signal::unix::{signal, SignalKind};
+use figment::Figment;
+use figment::providers::{Yaml, Env, Format};
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -11,8 +13,19 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
 
-    let config_path = config_path_from_args();
-    let cfg: Config = serde_yaml::from_slice(&tokio::fs::read(&config_path).await?)?;
+    let mut figment = Figment::new();
+    if let Some(config_path) = config_path_from_args() {
+        figment = figment.merge(Yaml::file(config_path));
+    }
+    figment = figment.merge(Env::prefixed("FERNGLAS_").split("__"));
+
+    let cfg: Config = figment.extract()?;
+
+    trace!("config: {:#?}", &cfg);
+
+    if cfg.config_check {
+        std::process::exit(0);
+    }
 
     let store: store_impl::InMemoryStore = Default::default();
 
@@ -29,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
         shutdown_rx.clone(),
     )));
 
-    futures.extend(cfg.collectors.into_iter().map(|collector| match collector {
+    futures.extend(cfg.collectors.into_iter().map(|(_, collector)| match collector {
         CollectorConfig::Bmp(cfg) => {
             tokio::task::spawn(bmp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
         }

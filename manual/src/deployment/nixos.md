@@ -38,15 +38,15 @@ in {
     enable = true;
     settings = {
       api.bind = "[::1]:3000";
-      collectors = [
-        {
+      collectors = {
+        my_bmp_collector = {
           collector_type = "Bmp";
           bind = "[::]:${toString bmpPort}";
           peers = {
             "192.0.2.1" = {};
           };
-        }
-      ];
+        };
+      };
     };
   };
 
