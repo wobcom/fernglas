@@ -36,15 +36,6 @@ pub enum ResolvedNexthop {
     ReverseDns(String),
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
-pub struct ResolvedRouteAttrs {
-    #[serde(flatten)]
-    pub inner: RouteAttrs,
-    pub resolved_communities: HashMap<(u16, u16), String>,
-    pub resolved_large_communities: HashMap<(u32, u32, u32), String>,
-    pub resolved_nexthop: ResolvedNexthop,
-}
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionId {
@@ -132,7 +123,7 @@ pub struct Query<T = IpNet> {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct QueryResult<T = RouteAttrs> {
+pub struct QueryResult {
     pub state: RouteState,
     pub net: IpNet,
     #[serde(flatten)]
@@ -142,7 +133,7 @@ pub struct QueryResult<T = RouteAttrs> {
     #[serde(flatten)]
     pub session: Option<Session>,
     #[serde(flatten)]
-    pub attrs: T,
+    pub attrs: RouteAttrs,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
