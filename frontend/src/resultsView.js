@@ -24,24 +24,24 @@ const resultTemplate = (result, havePeerColumn) => html`
 		<td><span>${result.med}</span></td>
 		<td><span>${result.local_pref}</span></td>
 		<td>
-			${result?.resolved_nexthop?.ReverseDns !== undefined
-			? html`<span title=${result.nexthop}>${result?.resolved_nexthop?.ReverseDns}</span>`
+			${result?.nexthop_resolved?.ReverseDns !== undefined
+			? html`<span title=${result.nexthop}>${result?.nexthop_resolved?.ReverseDns}</span>`
 			: html`<span>${result.nexthop}</span>`}
 		</td>
 		<td><span>${result.state}</span></td>
 	</tr>
 `;
 
-const resultsTemplate = (query, results, done) => html`
+const resultsTemplate = (query, routeResults, done) => html`
 	${searchTemplate(query)}
 
 	<div class="results">
-		${results.length > 0 ? html`
+		${routeResults.length > 0 ? html`
 			<table>
 				<thead>
 					<tr>
 						<th>Router</th>
-						${results.some(result => result.peer_address) ? html`<th>Peer</th>` : ``}
+						${routeResults.some(result => result.peer_address) ? html`<th>Peer</th>` : ``}
 						<th>Prefix</th>
 						<th>AS Path</th>
 						<th>Communities</th>
@@ -53,7 +53,7 @@ const resultsTemplate = (query, results, done) => html`
 					</tr>
 				</thead>
 				<tbody>
-					${results.map(result => resultTemplate(result, results.some(result => result.peer_address)))}
+					${routeResults.map(result => resultTemplate(result, routeResults.some(result => result.peer_address)))}
 				</tbody>
 			</table>
 		` : ''}
@@ -75,17 +75,25 @@ const errorTemplate = (query, data) => html`
 
 const processResults = (results) => {
 
+	const routeResults = results.filter(r => !!r.Route).map(r => r.Route);
+	console.log(results);
+	const dnsResults = results.filter(r => !!r.ReverseDns).map(r => r.ReverseDns);
+
+	console.log(dnsResults);
+	const dnsMap = Object.fromEntries(dnsResults.map(r => [r.nexthop, { nexthop_resolved: r.nexthop_resolved }]));
+	console.log(dnsMap);
+
 	// stage 1, combine pre- and post-policy adj-in tables
 	// start out with PostPolicy
 	const preAndPostPolicy = {};
 	const preAndPostPolicyKey = route => `${route.from_client}:${route.peer_address}:${route.net}`;
-	for (let route of results) {
+	for (let route of routeResults) {
 		if (route.table === "PostPolicyAdjIn") {
 			preAndPostPolicy[preAndPostPolicyKey(route)] = route;
 		}
 	}
 	// add routes which are _only_ in PrePolicy => have not been accepted
-	for (let route of results) {
+	for (let route of routeResults) {
 		if (route.table === "PrePolicyAdjIn") {
 			const key = preAndPostPolicyKey(route);
 			if (!preAndPostPolicy[key]) {
@@ -100,7 +108,7 @@ const processResults = (results) => {
 	for (let route of Object.values(preAndPostPolicy)) {
 		all[allKey(route)] = route;
 	}
-	for (let route of results) {
+	for (let route of routeResults) {
 		if (route.table === "LocRib" && route.state === "Accepted") {
 			const key = allKey(route);
 			if (all[key])
@@ -109,7 +117,7 @@ const processResults = (results) => {
 				all[key] = route;
 		}
 	}
-	for (let route of results) {
+	for (let route of routeResults) {
 		if (route.table === "LocRib" && route.state === "Active") {
 			const key = allKey(route);
 			if (all[key])
@@ -118,7 +126,7 @@ const processResults = (results) => {
 				all[key] = route;
 		}
 	}
-	for (let route of results) {
+	for (let route of routeResults) {
 		if (route.table === "LocRib" && route.state === "Selected") {
 			const key = allKey(route);
 			if (all[key])
@@ -143,6 +151,14 @@ const processResults = (results) => {
 		if (res !== 0) return res;
 		return 0;
 	});
+
+	// add resolved nexthop data
+	for (const result of newResults) {
+		if (result.nexthop in dnsMap) {
+			Object.assign(result, dnsMap[result.nexthop])
+		}
+	}
+
 	return newResults;
 };
 
