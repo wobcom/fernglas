@@ -76,12 +76,9 @@ const errorTemplate = (query, data) => html`
 const processResults = (results) => {
 
 	const routeResults = results.filter(r => !!r.Route).map(r => r.Route);
-	console.log(results);
 	const dnsResults = results.filter(r => !!r.ReverseDns).map(r => r.ReverseDns);
 
-	console.log(dnsResults);
 	const dnsMap = Object.fromEntries(dnsResults.map(r => [r.nexthop, { nexthop_resolved: r.nexthop_resolved }]));
-	console.log(dnsMap);
 
 	// stage 1, combine pre- and post-policy adj-in tables
 	// start out with PostPolicy
