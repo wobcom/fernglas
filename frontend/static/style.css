@@ -147,6 +147,13 @@ body {
         background-color: #ccddaa;
 }
 
+.results tbody tr.Filtered {
+        background-color: #ffbfbf;
+}
+.results tbody tr.Filtered:hover {
+	background-color: #c69696;
+}
+
 .results tbody tr:hover td {
         background-color: transparent;
 }

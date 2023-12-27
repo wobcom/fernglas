@@ -95,6 +95,7 @@ const processResults = (results) => {
 			const key = preAndPostPolicyKey(route);
 			if (!preAndPostPolicy[key]) {
 				preAndPostPolicy[key] = route;
+				preAndPostPolicy[key].state = "Filtered";
 			}
 		}
 	}
@@ -103,7 +104,8 @@ const processResults = (results) => {
 	const all = {};
 	const allKey = route => `${route.client_name}:${route.net}:${JSON.stringify(route.as_path)}:${JSON.stringify(route.large_communities)}:${route.nexthop}`;
 	for (let route of Object.values(preAndPostPolicy)) {
-		all[allKey(route)] = route;
+		const key = allKey(route);
+		all[key] = route;
 	}
 	for (let route of routeResults) {
 		if (route.table === "LocRib" && route.state === "Accepted") {
@@ -141,7 +143,7 @@ const processResults = (results) => {
 		if (res !== 0) return res;
 		res = a.net.localeCompare(b.net);
 		if (res !== 0) return res;
-		const stateRank = [ "Selected", "Active", "Accepted", "Seen" ];
+		const stateRank = [ "Selected", "Active", "Accepted", "Filtered" ];
 		res = stateRank.indexOf(a.state) - stateRank.indexOf(b.state);
 		if (res !== 0) return res;
 		res = JSON.stringify(a).localeCompare(JSON.stringify(b));
