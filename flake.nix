@@ -45,7 +45,7 @@
       fernglas-frontend = final.callPackage (
         { lib, stdenv, yarn2nix-moretea, yarn, nodejs-slim }:
 
-        stdenv.mkDerivation {
+        stdenv.mkDerivation (finalDrv: {
           pname = "fernglas-frontend";
           version =
             self.shortRev or "dirty-${toString self.lastModifiedDate}";
@@ -59,6 +59,9 @@
               src = ./frontend;
             };
           };
+
+          env.FERNGLAS_COMMIT = self.rev or "main";
+          env.FERNGLAS_VERSION = finalDrv.version;
 
           offlineCache = let
             yarnLock = ./frontend/yarn.lock;
@@ -91,7 +94,7 @@
             mv dist $out
             runHook postInstall
           '';
-        }
+        })
 
       ) { };
 

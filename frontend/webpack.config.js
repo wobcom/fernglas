@@ -22,7 +22,17 @@ module.exports = {
   },
   plugins: [
     new CopyPlugin({
-      patterns: [ "static" ]
+      patterns: [
+        {
+          from: "static",
+          transform: (content) => {
+            return content
+              .toString()
+              .replace('#VERSION#', process.env.FERNGLAS_VERSION)
+              .replace('#COMMIT#', process.env.FERNGLAS_COMMIT);
+          },
+        }
+      ]
     })
   ]
 };
