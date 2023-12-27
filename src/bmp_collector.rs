@@ -171,6 +171,7 @@ pub async fn run_client(
                 None => warn!("message for nonexisting peer: {:?}", &rm),
             },
             BmpMessage::PeerUpNotification(n) => {
+                info!("peer up: {} {:?}", n.peer.peeraddress, &n);
                 channels.insert(n.peer.peeraddress, run_peer(client_addr, n, store));
             }
             BmpMessage::PeerDownNotification(n) => match channels.remove(&n.peer.peeraddress) {
