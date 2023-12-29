@@ -189,7 +189,13 @@
 }
 </code></pre>
 <p>Be aware that in some older Junos versions the BMP implementation is buggy and causes memory leaks in the routing process.</p>
-
+<div class="table-wrapper"><table><thead><tr><th>Tested Junos Release</th><th>Known Issues</th></tr></thead><tbody>
+<tr><td>20.2R3-S3.6</td><td>❌ <a href="https://prsearch.juniper.net/PR1526061">PR1526061</a> BGP Monitoring Protocols may not releases IO buffer correctly</td></tr>
+<tr><td>21.4R3-S2.3</td><td>❌ <a href="https://prsearch.juniper.net/PR1713444">PR1713444</a> The rpd process may crash when BMP socket write fails or blocks</td></tr>
+<tr><td>21.4R3-S4.9</td><td>✅ None</td></tr>
+<tr><td>22.2R3.15</td><td>✅ None</td></tr>
+</tbody></table>
+</div>
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
