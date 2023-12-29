@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Using Docker - Fernglas Manual</title>
+        <title>Using Containers / Docker - Fernglas Manual</title>
 
 
         <!-- Custom HTML head -->
@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="../introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="../deployment/index.html"><strong aria-hidden="true">2.</strong> Deployment</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../deployment/nixos.html"><strong aria-hidden="true">2.1.</strong> Using NixOS</a></li><li class="chapter-item expanded "><a href="../deployment/docker.html" class="active"><strong aria-hidden="true">2.2.</strong> Using Docker</a></li><li class="chapter-item expanded "><a href="../deployment/manual/index.html"><strong aria-hidden="true">2.3.</strong> Manual Setup</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../deployment/manual/backend.html"><strong aria-hidden="true">2.3.1.</strong> Backend</a></li><li class="chapter-item expanded "><a href="../deployment/manual/frontend.html"><strong aria-hidden="true">2.3.2.</strong> Frontend and Reverse Proxy</a></li></ol></li></ol></li><li class="chapter-item expanded "><a href="../data-sources/index.html"><strong aria-hidden="true">3.</strong> Data sources</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../data-sources/bmp-junos.html"><strong aria-hidden="true">3.1.</strong> Junos using BMP</a></li><li class="chapter-item expanded "><a href="../data-sources/bgp-bird2.html"><strong aria-hidden="true">3.2.</strong> bird2 using BGP</a></li></ol></li><li class="chapter-item expanded "><a href="../appendix/index.html"><strong aria-hidden="true">4.</strong> Appendix</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../appendix/nixos-specialArgs-pattern.html"><strong aria-hidden="true">4.1.</strong> NixOS specialArgs pattern</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="../deployment/index.html"><strong aria-hidden="true">2.</strong> Deployment</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../deployment/nixos.html"><strong aria-hidden="true">2.1.</strong> Using NixOS</a></li><li class="chapter-item expanded "><a href="../deployment/container.html" class="active"><strong aria-hidden="true">2.2.</strong> Using Containers / Docker</a></li><li class="chapter-item expanded "><a href="../deployment/manual/index.html"><strong aria-hidden="true">2.3.</strong> Manual Setup</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../deployment/manual/backend.html"><strong aria-hidden="true">2.3.1.</strong> Backend</a></li><li class="chapter-item expanded "><a href="../deployment/manual/frontend.html"><strong aria-hidden="true">2.3.2.</strong> Frontend and Reverse Proxy</a></li></ol></li></ol></li><li class="chapter-item expanded "><a href="../configuration/index.html"><strong aria-hidden="true">3.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../configuration/bmp-junos.html"><strong aria-hidden="true">3.1.</strong> Junos using BMP</a></li><li class="chapter-item expanded "><a href="../configuration/bgp-bird2.html"><strong aria-hidden="true">3.2.</strong> bird2 using BGP</a></li></ol></li><li class="chapter-item expanded "><a href="../appendix/index.html"><strong aria-hidden="true">4.</strong> Appendix</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../appendix/nixos-specialArgs-pattern.html"><strong aria-hidden="true">4.1.</strong> NixOS specialArgs pattern</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -171,8 +171,36 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="deploying-fernglas-using-docker"><a class="header" href="#deploying-fernglas-using-docker">Deploying fernglas using Docker</a></h1>
-<p>TBD</p>
+                        <h1 id="deploying-fernglas-using-oci-containers--docker"><a class="header" href="#deploying-fernglas-using-oci-containers--docker">Deploying fernglas using OCI Containers / Docker</a></h1>
+<p>We have two different images. One image contains the UI, which is statically built and could be served from any other static webserver, i.e. nginx, apache, caddy. The other image contains the Fernglas software itself and is considered the backend. It exposes an HTTP API for the UI.</p>
+<h2 id="prequesits"><a class="header" href="#prequesits">Prequesits</a></h2>
+<ul>
+<li>OCI Runtime
+<ul>
+<li>You need to have installed Docker, podman, or any similar container daemon that can run OCI containers provided by us</li>
+</ul>
+</li>
+<li>You need to have a working reverse proxy setup
+<ul>
+<li>Fernglas only exposes HTTP. TLS and probably authentication needs to be handled by yourself. </li>
+</ul>
+</li>
+<li>A Domain or Subdomain
+<ul>
+<li>Fernglas currently do not support path-based deployments, i.e. <code>myfancycompany.com/fernglas</code>.</li>
+</ul>
+</li>
+</ul>
+<h2 id="fernglas-backend"><a class="header" href="#fernglas-backend">Fernglas Backend</a></h2>
+<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas:fernglas-0.1.0
+</code></pre>
+<p>You need to write a config file to specify Fernglas configuration. This needs to be put under <code>/config/config.yaml</code> in the standard configuration.
+See the chapter on <a href="configuration/README.html">configuration</a> for more information on how to write the collectors configuration.</p>
+<h2 id="fernglas-frontend"><a class="header" href="#fernglas-frontend">Fernglas Frontend</a></h2>
+<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas-frontend:fernglas-0.1.0
+</code></pre>
+<p>By setting <code>serve_static: true</code> in the config, the backend will also serve the bundled frontend files from the same webserver as the API.</p>
+<p>You can take the fernglas-frontend image as base and serve the files with your own web server directly, if you want. The files need to be exposed at <code>/</code> of your domain, while the <code>/api/</code> path should be passed through to the API server.</p>
 
                     </main>
 
