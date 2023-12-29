@@ -1,10 +1,15 @@
-# Data sources
+# Configuration
+
+The example configuration uses port `3000` and `11019` to expose the API and collect the BMP data stream. You can change those ports, if needed,
+but you need to expose 11019 to an IP address reachable from your router, probably bind this port to `[::]:11019` and check for outside reachability.
+Note: You also need to specify the IP addresses of possible peers in the config file to ensure no unauthorized person is steaming a BMP stream to your machine.
 
 To hook up routers to your looking glass, you will have to configure either a BMP (BGP Monitoring Protocol) or BGP session between your router and the looking glass.
 
-When the router supports it, BMP is always the preferred option.
-
 For both the BGP and BMP collectors, multiple instances can be created (listening on different ports, etc.) and per-peer configuration can be provided based on the client IP.
+
+If multiple collectors collect data with the same hostname (as reported by BMP or BGP peer, or set in `name_override`), the data will be combined in the frontend. This can be used to build complex views of the Pre/Post Policy Adj-In and LocRib tables using multiple BGP sessions.  
+If using BMP, everything should 'just work'.
 
 ```yml
 

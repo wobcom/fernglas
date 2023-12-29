@@ -1,6 +1,8 @@
 # Frontend and Reverse Proxy
 
-Download the prebuilt frontend tar.
+To serve the bundled frontend files from the same web server as the API, set `serve_static: true` in the config.
+
+Alternatively download the prebuilt frontend tar.
 Extract it to `/usr/local/share/fernglas-frontend`.
 
 ```
