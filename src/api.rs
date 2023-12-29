@@ -116,6 +116,9 @@ async fn query<T: Store>(
 
     let stream = store
         .get_routes(query)
+
+        // this little mess is required to attach reverse DNS resolutions for each nexthop, and
+        // resolve all the entries in parallel as they arrive, while also deduplicating them
         .flat_map_unordered(None, move |route| {
             enum StreamState {
                 SendRoute,
