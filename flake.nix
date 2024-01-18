@@ -138,10 +138,6 @@
             paths = [ fernglas-frontend ];
             extraPrefix = "/usr/share/fernglas-frontend";
           };
-          config = {
-            # FIXME: Remove python webserver and use something better.
-            Cmd = [ "${python3}/bin/python" "-m" "http.server" "-d" "/usr/share/fernglas-frontend"];
-          };
         }
       ) { };
 
