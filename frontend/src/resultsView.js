@@ -4,12 +4,16 @@ import { searchTemplate } from './search.js';
 import ndjsonStream from 'can-ndjson-stream';
 import { routers, communities } from './cache.js';
 
-const resultTemplate = (result, havePeerColumn) => html`
+const resultTemplate = (result, havePeerColumn, asn_names) => html`
 	<tr class=${result.state}>
 		<td><span>${result.client_name}</span></td>
 		${havePeerColumn ? html`<td><span>${result.peer_address}</span></td>` : ``}
 		<td><span>${result.net}</span></td>
-		<td><span>${result.as_path.join(" ")}</span></td>
+		<td><span>${result.as_path.map(asn => html`
+			${asn_names[asn] !== undefined
+			? html`<span title=${asn_names[asn]}>${asn}</span>`
+			: html`<span>${asn}</span>`}
+		`)}</span></td>
 		<td><span>${[
 			...(result.large_communities || []),
 			...(result.communities || [])
@@ -32,7 +36,7 @@ const resultTemplate = (result, havePeerColumn) => html`
 	</tr>
 `;
 
-const resultsTemplate = (query, routeResults, done) => html`
+const resultsTemplate = (query, { routeResults, asn_names }, done) => html`
 	${searchTemplate(query)}
 
 	<div class="results">
@@ -53,7 +57,7 @@ const resultsTemplate = (query, routeResults, done) => html`
 					</tr>
 				</thead>
 				<tbody>
-					${routeResults.map(result => resultTemplate(result, routeResults.some(result => result.peer_address)))}
+					${routeResults.map(result => resultTemplate(result, routeResults.some(result => result.peer_address), asn_names))}
 				</tbody>
 			</table>
 		` : ''}
@@ -77,7 +81,9 @@ const processResults = (results) => {
 
 	const routeResults = results.filter(r => !!r.Route).map(r => r.Route);
 	const dnsResults = results.filter(r => !!r.ReverseDns).map(r => r.ReverseDns);
+	const asnResults = results.filter(r => !!r.AsnName).map(r => r.AsnName);
 
+	const asn_names = Object.fromEntries(asnResults.map(r => [r.asn, r.asn_name ]));
 	const dnsMap = Object.fromEntries(dnsResults.map(r => [r.nexthop, { nexthop_resolved: r.nexthop_resolved }]));
 
 	// stage 1, combine pre- and post-policy adj-in tables
@@ -158,7 +164,7 @@ const processResults = (results) => {
 		}
 	}
 
-	return newResults;
+	return { routeResults: newResults, asn_names };
 };
 
 export const resultsView = async (query) => {
@@ -173,7 +179,7 @@ export const resultsView = async (query) => {
 		searchParams.set("Router", Object.values(routers).find(router => router.client_name == param_router).router_id);
 	}
 
-	render(resultsTemplate(query, [], false), document.getElementById('content'));
+	render(resultsTemplate(query, { routeResults: [], as_names: {} }, false), document.getElementById('content'));
 
 	const response = await fetch("/api/query?" + searchParams);
 	if (!response.ok) {
