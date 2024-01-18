@@ -145,6 +145,7 @@ async fn query<T: Store>(
 
             futures
         })
+        .filter_map(|x| futures_util::future::ready(x))
         .map(|result| {
             let json = serde_json::to_string(&result).unwrap();
             Ok::<_, Infallible>(format!("{}\n", json))
