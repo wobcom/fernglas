@@ -155,11 +155,20 @@ async fn query<T: Store>(
                             .txt_lookup(format!("as{}.asn.cymru.com.", asn))
                             .await
                             .ok()
-                            .and_then(|txt| txt.iter().next().map(|x| x.to_string()))
-                            .map(|asn_name| ApiResult::AsnName {
-                                asn,
-                                asn_name,
+                            .and_then(|txt| {
+                                txt.iter().next().and_then(|x| {
+                                    x.iter()
+                                        .next()
+                                        .and_then(|data| std::str::from_utf8(data).ok())
+                                        .and_then(|s| {
+                                            s.split(" | ")
+                                                .skip(4)
+                                                .next()
+                                                .map(|name| name.to_string())
+                                        })
+                                })
                             })
+                            .map(|asn_name| ApiResult::AsnName { asn, asn_name })
                     }))
                 }
             }
