@@ -38,6 +38,10 @@ pub enum ApiResult {
         nexthop: IpAddr,
         nexthop_resolved: ResolvedNexthop,
     },
+    AsnName {
+        asn: u32,
+        asn_name: String,
+    },
 }
 
 // Make our own error that wraps `anyhow::Error`.
@@ -114,6 +118,7 @@ async fn query<T: Store>(
 
     // for deduplicating the nexthop resolutions
     let mut have_resolved = HashSet::new();
+    let mut have_asn = HashSet::new();
 
     let stream = store
         .get_routes(query)
@@ -138,6 +143,22 @@ async fn query<T: Store>(
                             .map(|x| ApiResult::ReverseDns {
                                 nexthop,
                                 nexthop_resolved: ResolvedNexthop::ReverseDns(x),
+                            })
+                    }))
+                }
+            }
+            for asn in route.attrs.as_path.into_iter().flat_map(|x| x) {
+                if have_asn.insert(asn) {
+                    let resolver = resolver.clone();
+                    futures.push(Box::pin(async move {
+                        resolver
+                            .txt_lookup(format!("as{}.asn.cymru.com.", asn))
+                            .await
+                            .ok()
+                            .and_then(|txt| txt.iter().next().map(|x| x.to_string()))
+                            .map(|asn_name| ApiResult::AsnName {
+                                asn,
+                                asn_name,
                             })
                     }))
                 }
