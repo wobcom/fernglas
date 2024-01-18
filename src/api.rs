@@ -21,6 +21,10 @@ use std::sync::Arc;
 #[cfg(feature = "embed-static")]
 static STATIC_DIR: include_dir::Dir<'_> = include_dir::include_dir!("$CARGO_MANIFEST_DIR/static");
 
+fn default_asn_dns_zone() -> Option<String> {
+    Some("as{}.asn.cymru.com.".to_string())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiServerConfig {
     bind: SocketAddr,
@@ -29,6 +33,9 @@ pub struct ApiServerConfig {
     #[cfg(feature = "embed-static")]
     #[serde(default)]
     serve_static: bool,
+    /// Dns zone used for ASN lookups
+    #[serde(default = "default_asn_dns_zone")]
+    pub asn_dns_zone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,29 +154,32 @@ async fn query<T: Store>(
                     }))
                 }
             }
-            for asn in route.attrs.as_path.into_iter().flat_map(|x| x) {
-                if have_asn.insert(asn) {
-                    let resolver = resolver.clone();
-                    futures.push(Box::pin(async move {
-                        resolver
-                            .txt_lookup(format!("as{}.asn.cymru.com.", asn))
-                            .await
-                            .ok()
-                            .and_then(|txt| {
-                                txt.iter().next().and_then(|x| {
-                                    x.iter()
-                                        .next()
-                                        .and_then(|data| std::str::from_utf8(data).ok())
-                                        .and_then(|s| {
-                                            s.split(" | ")
-                                                .skip(4)
-                                                .next()
-                                                .map(|name| name.to_string())
-                                        })
+            if let Some(asn_dns_zone) = &cfg.asn_dns_zone {
+                for asn in route.attrs.as_path.into_iter().flat_map(|x| x) {
+                    if have_asn.insert(asn) {
+                        let resolver = resolver.clone();
+                        let asn_dns_zone = asn_dns_zone.clone();
+                        futures.push(Box::pin(async move {
+                            resolver
+                                .txt_lookup(asn_dns_zone.replace("{}", &asn.to_string()))
+                                .await
+                                .ok()
+                                .and_then(|txt| {
+                                    txt.iter().next().and_then(|x| {
+                                        x.iter()
+                                            .next()
+                                            .and_then(|data| std::str::from_utf8(data).ok())
+                                            .and_then(|s| {
+                                                s.split(" | ")
+                                                    .skip(4)
+                                                    .next()
+                                                    .map(|name| name.to_string())
+                                            })
+                                    })
                                 })
-                            })
-                            .map(|asn_name| ApiResult::AsnName { asn, asn_name })
-                    }))
+                                .map(|asn_name| ApiResult::AsnName { asn, asn_name })
+                        }))
+                    }
                 }
             }
 
