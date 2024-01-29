@@ -1,4 +1,4 @@
-use crate::store::{NetQuery, Query, QueryLimits, QueryResult, ResolvedNexthop, Store};
+use crate::store::{NetQuery, Query, QueryLimits, QueryResult, Store};
 use axum::body::StreamBody;
 use axum::extract::{Query as AxumQuery, State};
 use axum::http::StatusCode;
@@ -43,7 +43,7 @@ pub enum ApiResult {
     Route(QueryResult),
     ReverseDns {
         nexthop: IpAddr,
-        nexthop_resolved: ResolvedNexthop,
+        nexthop_resolved: String,
     },
     AsnName {
         asn: u32,
@@ -147,9 +147,9 @@ async fn query<T: Store>(
                             .await
                             .ok()
                             .and_then(|reverse| reverse.iter().next().map(|x| x.0.to_string()))
-                            .map(|x| ApiResult::ReverseDns {
+                            .map(|nexthop_resolved| ApiResult::ReverseDns {
                                 nexthop,
-                                nexthop_resolved: ResolvedNexthop::ReverseDns(x),
+                                nexthop_resolved,
                             })
                     }))
                 }

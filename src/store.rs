@@ -28,14 +28,6 @@ pub struct RouteAttrs {
     pub nexthop: Option<IpAddr>,
 }
 
-#[derive(Debug, Clone, Serialize, Default)]
-pub enum ResolvedNexthop {
-    #[default]
-    None,
-    RouterId(RouterId),
-    ReverseDns(String),
-}
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionId {
