@@ -2,16 +2,16 @@ import { html, render } from 'lit-html';
 import { go } from './router.js';
 import { searchTemplate } from './search.js';
 import ndjsonStream from 'can-ndjson-stream';
-import { routers, communities } from './cache.js';
+import { routers } from './cache.js';
 
-const resultTemplate = (result, havePeerColumn, asn_names) => html`
+const resultTemplate = (result, havePeerColumn, dnsMap, asnMap, communityMap) => html`
 	<tr class=${result.state}>
 		<td><span>${result.client_name}</span></td>
 		${havePeerColumn ? html`<td><span>${result.peer_address}</span></td>` : ``}
 		<td><span>${result.net}</span></td>
 		<td><span>${result.as_path.map(asn => html`
-			${asn_names[asn] !== undefined
-			? html`<span title=${asn_names[asn]}>${asn}</span>`
+			${asn in asnMap
+			? html`<span title=${asnMap[asn]}>${asn}</span>`
 			: html`<span>${asn}</span>`}
 		`)}</span></td>
 		<td><span>${[
@@ -19,8 +19,8 @@ const resultTemplate = (result, havePeerColumn, asn_names) => html`
 			...(result.communities || [])
 		]
 			.map(community => community.join(":"))
-			.map(community => community in communities
-				? html`<div class="tag named tooltip" title=${community}>${communities[community]}</div>`
+			.map(community => community in communityMap
+				? html`<div class="tag named tooltip" title=${community}>${communityMap[community]}</div>`
 				: html`<div class="tag">${community}</div>`
 			)
 		}</span></td>
@@ -28,15 +28,15 @@ const resultTemplate = (result, havePeerColumn, asn_names) => html`
 		<td><span>${result.med}</span></td>
 		<td><span>${result.local_pref}</span></td>
 		<td>
-			${result?.nexthop_resolved?.ReverseDns !== undefined
-			? html`<span title=${result.nexthop}>${result?.nexthop_resolved?.ReverseDns}</span>`
+			${result.nexthop in dnsMap
+			? html`<span title=${result.nexthop}>${dnsMap[result.nexthop]}</span>`
 			: html`<span>${result.nexthop}</span>`}
 		</td>
 		<td><span>${result.state}</span></td>
 	</tr>
 `;
 
-const resultsTemplate = (query, { routeResults, asn_names }, done) => html`
+const resultsTemplate = (query, { routeResults, dnsMap, asnMap, communityMap }, done) => html`
 	${searchTemplate(query)}
 
 	<div class="results">
@@ -57,7 +57,7 @@ const resultsTemplate = (query, { routeResults, asn_names }, done) => html`
 					</tr>
 				</thead>
 				<tbody>
-					${routeResults.map(result => resultTemplate(result, routeResults.some(result => result.peer_address), asn_names))}
+					${routeResults.map(result => resultTemplate(result, routeResults.some(result => result.peer_address), dnsMap, asnMap, communityMap))}
 				</tbody>
 			</table>
 		` : ''}
@@ -82,9 +82,13 @@ const processResults = (results) => {
 	const routeResults = results.filter(r => !!r.Route).map(r => r.Route);
 	const dnsResults = results.filter(r => !!r.ReverseDns).map(r => r.ReverseDns);
 	const asnResults = results.filter(r => !!r.AsnName).map(r => r.AsnName);
+	const communityResults = results.filter(r => !!r.CommunityDescription).map(r => r.CommunityDescription);
 
-	const asn_names = Object.fromEntries(asnResults.map(r => [r.asn, r.asn_name ]));
-	const dnsMap = Object.fromEntries(dnsResults.map(r => [r.nexthop, { nexthop_resolved: r.nexthop_resolved }]));
+	const dnsMap = Object.fromEntries(dnsResults.map(r => [r.nexthop, r.nexthop_resolved]));
+	const asnMap = Object.fromEntries(asnResults.map(r => [r.asn, r.asn_name ]));
+	const communityMap = Object.fromEntries(communityResults.map(r => [r.community, r.community_description ]));
+
+	console.log(asnMap, communityMap, dnsMap);
 
 	// stage 1, combine pre- and post-policy adj-in tables
 	// start out with PostPolicy
@@ -157,14 +161,7 @@ const processResults = (results) => {
 		return 0;
 	});
 
-	// add resolved nexthop data
-	for (const result of newResults) {
-		if (result.nexthop in dnsMap) {
-			Object.assign(result, dnsMap[result.nexthop])
-		}
-	}
-
-	return { routeResults: newResults, asn_names };
+	return { routeResults: newResults, asnMap, communityMap, dnsMap };
 };
 
 export const resultsView = async (query) => {
