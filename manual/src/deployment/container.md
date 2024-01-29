@@ -9,7 +9,7 @@ We have two different images. One image contains the UI, which is statically bui
 + You need to have a working reverse proxy setup
     + Fernglas only exposes HTTP. TLS and probably authentication needs to be handled by yourself. 
 + A Domain or Subdomain
-    + Fernglas currently do not support path-based deployments, i.e. `myfancycompany.com/fernglas`.
+    + Fernglas currently do not support path-based deployments, i.e. `example.org/fernglas`.
 
 ## Fernglas Backend
 
