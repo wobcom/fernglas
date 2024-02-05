@@ -4,9 +4,22 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
+  inputs.communities.url = "github:NLNOG/lg.ring.nlnog.net";
+  inputs.communities.flake = false;
 
-  outputs = { self, nixpkgs, flake-utils }: {
+  outputs = { self, nixpkgs, flake-utils, communities }: {
     overlays.default = final: prev: {
+
+      communities-json = final.callPackage (
+        { runCommand, python3, jq }:
+
+        runCommand "communities.json" {
+          nativeBuildInputs = [ python3 jq ];
+        } ''
+          python3 ${./contrib/print_communities.py} ${communities}/communities | jq . > $out
+        ''
+      ) { };
+
       fernglas = final.callPackage (
         { lib, stdenv, rustPlatform }:
 
@@ -240,7 +253,7 @@
     };
   in rec {
     packages = {
-      inherit (pkgs) fernglas fernglas-frontend;
+      inherit (pkgs) fernglas fernglas-frontend communities-json;
       default = packages.fernglas;
     };
     legacyPackages = pkgs;

@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "communities": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1706695952,
+        "narHash": "sha256-FlbOBX/+/LLmoqMJLvu59XuHYmiohIhDc1VjkZu4Wzo=",
+        "owner": "NLNOG",
+        "repo": "lg.ring.nlnog.net",
+        "rev": "20f9a9f3da8b1bc9d7046e88c62df4b41b4efb99",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NLNOG",
+        "repo": "lg.ring.nlnog.net",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -36,6 +52,7 @@
     },
     "root": {
       "inputs": {
+        "communities": "communities",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs"
       }
