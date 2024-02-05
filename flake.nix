@@ -28,6 +28,7 @@
 
           preBuild = ''
             cp -r ${final.buildPackages.fernglas-frontend} ./static
+            cp ${final.buildPackages.communities-json} ./src/communities.json
           '';
 
           version =
