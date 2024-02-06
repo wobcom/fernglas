@@ -155,12 +155,16 @@ def read_communities() -> dict:
     files = glob.glob(f"{sys.argv[1]}/*.txt")
     for filename in files:
         with open(filename, "r", encoding="utf8") as filehandle:
-            as_name = os.path.basename(filename).replace("as", "AS").removesuffix(".txt")
+            asn = os.path.basename(filename).removeprefix("as").removesuffix(".txt")
             for entry in [line.strip() for line in filehandle.readlines()]:
                 if entry.startswith("#") or "," not in entry:
                     continue
                 (comm, desc) = entry.split(",", 1)
-                desc = f"{as_name}: {desc}"
+                if comm.startswith(f"{asn}:"):
+                    desc = f"AS{asn}: {desc}"
+                elif os.path.basename(filename) == f"as{asn}.txt":
+                    print(f"Ignoring community from {os.path.basename(filename)}, as it doesn't start with the asn", file=sys.stderr)
+                    continue
                 ctype = get_community_type(comm)
                 if ctype == "unknown":
                     print(f"unknown communtity format: '{comm}'", file=sys.stderr)
