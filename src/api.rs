@@ -1,5 +1,5 @@
 use crate::store::{NetQuery, Query, QueryLimits, QueryResult, Store};
-use axum::body::StreamBody;
+use axum::body::Body;
 use axum::extract::FromRef;
 use axum::extract::{Query as AxumQuery, State};
 use axum::http::StatusCode;
@@ -335,7 +335,7 @@ async fn query<T: Store>(
             Ok::<_, Infallible>(format!("{}\n", json))
         });
 
-    Ok(StreamBody::new(stream))
+    Ok(Body::from_stream(stream))
 }
 
 async fn routers<T: Store>(State(AppState { store, .. }): State<AppState<T>>) -> impl IntoResponse {
@@ -421,9 +421,10 @@ pub async fn run_api_server<T: Store>(
 
     let make_service = router.into_make_service();
 
-    axum::Server::bind(&cfg.bind)
-        .serve(make_service)
-        .with_graceful_shutdown(shutdown.changed().map(|_| ()))
+    // run our app with hyper, listening globally on port 3000
+    let listener = tokio::net::TcpListener::bind(&cfg.bind).await?;
+    axum::serve(listener, make_service)
+        .with_graceful_shutdown(async move { shutdown.changed().map(|_| ()).await })
         .await?;
 
     Ok(())
