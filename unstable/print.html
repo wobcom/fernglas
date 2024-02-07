@@ -91,7 +91,9 @@
             <div class="sidebar-scrollbox">
                 <ol class="chapter"><li class="chapter-item expanded "><a href="introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="deployment/index.html"><strong aria-hidden="true">2.</strong> Deployment</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="deployment/nixos.html"><strong aria-hidden="true">2.1.</strong> Using NixOS</a></li><li class="chapter-item expanded "><a href="deployment/container.html"><strong aria-hidden="true">2.2.</strong> Using Containers / Docker</a></li><li class="chapter-item expanded "><a href="deployment/manual/index.html"><strong aria-hidden="true">2.3.</strong> Manual Setup</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="deployment/manual/backend.html"><strong aria-hidden="true">2.3.1.</strong> Backend</a></li><li class="chapter-item expanded "><a href="deployment/manual/frontend.html"><strong aria-hidden="true">2.3.2.</strong> Frontend and Reverse Proxy</a></li></ol></li></ol></li><li class="chapter-item expanded "><a href="configuration/index.html"><strong aria-hidden="true">3.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="configuration/bmp-junos.html"><strong aria-hidden="true">3.1.</strong> Junos using BMP</a></li><li class="chapter-item expanded "><a href="configuration/bgp-bird2.html"><strong aria-hidden="true">3.2.</strong> bird2 using BGP</a></li></ol></li><li class="chapter-item expanded "><a href="appendix/index.html"><strong aria-hidden="true">4.</strong> Appendix</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="appendix/nixos-specialArgs-pattern.html"><strong aria-hidden="true">4.1.</strong> NixOS specialArgs pattern</a></li></ol></li></ol>
             </div>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
         </nav>
 
         <!-- Track and set sidebar scroll position -->
@@ -260,12 +262,12 @@ in {
 </li>
 </ul>
 <h2 id="fernglas-backend"><a class="header" href="#fernglas-backend">Fernglas Backend</a></h2>
-<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas:fernglas-0.1.0
+<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas:fernglas-0.2.1
 </code></pre>
 <p>You need to write a config file to specify Fernglas configuration. This needs to be put under <code>/config/config.yaml</code> in the standard configuration.
 See the chapter on <a href="deployment/configuration/README.html">configuration</a> for more information on how to write the collectors configuration.</p>
 <h2 id="fernglas-frontend"><a class="header" href="#fernglas-frontend">Fernglas Frontend</a></h2>
-<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas-frontend:fernglas-0.1.0
+<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas-frontend:fernglas-0.2.1
 </code></pre>
 <p>By setting <code>serve_static: true</code> in the config, the backend will also serve the bundled frontend files from the same webserver as the API.</p>
 <p>You can take the fernglas-frontend image as base and serve the files with your own web server directly, if you want. The files need to be exposed at <code>/</code> of your domain, while the <code>/api/</code> path should be passed through to the API server.</p>
@@ -273,7 +275,7 @@ See the chapter on <a href="deployment/configuration/README.html">configuration<
 <div style="break-before: page; page-break-before: always;"></div><h1 id="backend"><a class="header" href="#backend">Backend</a></h1>
 <p>Download the statically linked binaries and place them at <code>/usr/local/bin/</code>. Make them executable.</p>
 <pre><code>$ sudo mkdir -p /usr/local/bin
-$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.1.0/fernglas-static-0.1.0-x86-64-linux.tar.xz | sudo tar -C /usr/local/bin -xJ
+$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.2.1/fernglas-static-0.2.1-x86-64-linux.tar.xz | sudo tar -C /usr/local/bin -xJ
 </code></pre>
 <p>File: /etc/fernglas/config.yml</p>
 <pre><code class="language-yaml">api:
@@ -310,7 +312,7 @@ ProtectSystem=strict
 <p>Alternatively download the prebuilt frontend tar.
 Extract it to <code>/usr/local/share/fernglas-frontend</code>.</p>
 <pre><code>$ sudo mkdir -p /usr/local/share/fernglas-frontend
-$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.1.0/fernglas-frontend-0.1.0.tar.xz | sudo tar -C /usr/local/share/fernglas-frontend -xJ
+$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.2.1/fernglas-frontend-0.2.1.tar.xz | sudo tar -C /usr/local/share/fernglas-frontend -xJ
 </code></pre>
 <p>Set up your reverse proxy / webserver.
 A configuration for nginx might look like this:</p>
