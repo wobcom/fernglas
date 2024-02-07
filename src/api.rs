@@ -379,8 +379,6 @@ pub async fn get_metrics() -> (StatusCode, String) {
 
 #[cfg(feature = "embed-static")]
 async fn static_path(axum::extract::Path(path): axum::extract::Path<String>) -> impl IntoResponse {
-    use axum::body::Empty;
-    use axum::body::Full;
     use axum::http::header;
     use axum::http::header::HeaderValue;
 
@@ -390,7 +388,7 @@ async fn static_path(axum::extract::Path(path): axum::extract::Path<String>) -> 
     match STATIC_DIR.get_file(path) {
         None => Response::builder()
             .status(StatusCode::NOT_FOUND)
-            .body(axum::body::boxed(Empty::new()))
+            .body(Body::empty())
             .unwrap(),
         Some(file) => Response::builder()
             .status(StatusCode::OK)
@@ -398,7 +396,7 @@ async fn static_path(axum::extract::Path(path): axum::extract::Path<String>) -> 
                 header::CONTENT_TYPE,
                 HeaderValue::from_str(mime_type.as_ref()).unwrap(),
             )
-            .body(axum::body::boxed(Full::from(file.contents())))
+            .body(Body::from(file.contents()))
             .unwrap(),
     }
 }
