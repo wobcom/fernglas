@@ -1,7 +1,7 @@
 [package]
 name = "fernglas"
 description = "BGP & BMP looking glass"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 default-run = "fernglas"
 authors = [ "Yureka <yuka@yuka.dev>" ]
@@ -28,7 +28,7 @@ tokio = { version = "1.36", features = ["macros", "time", "rt-multi-thread", "io
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["codec"] }
 weak-table = "0.3"
-nibbletree = { version = "0.1", path = "./nibbletree", features = ["ipnet"] }
+nibbletree = { version = "0.2", path = "./nibbletree", features = ["ipnet"] }
 autometrics = { version = "0.3", features = ["prometheus-exporter"] }
 zettabgp = "0.3.4"
 hickory-resolver = "0.24"

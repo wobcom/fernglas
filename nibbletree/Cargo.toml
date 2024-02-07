@@ -1,7 +1,7 @@
 [package]
 name = "nibbletree"
 description = "Tree datastructure for versatile prefix lookups based on the Tree-bitmap algorithm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = [ "Yureka <yuka@yuka.dev>" ]
 license = "EUPL-1.2"
