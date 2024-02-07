@@ -1,9 +1,9 @@
 use fernglas::*;
+use figment::providers::{Env, Format, Yaml};
+use figment::Figment;
 use futures_util::future::{join_all, select_all};
 use log::*;
 use tokio::signal::unix::{signal, SignalKind};
-use figment::Figment;
-use figment::providers::{Yaml, Env, Format};
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -42,14 +42,18 @@ async fn main() -> anyhow::Result<()> {
         shutdown_rx.clone(),
     )));
 
-    futures.extend(cfg.collectors.into_iter().map(|(_, collector)| match collector {
-        CollectorConfig::Bmp(cfg) => {
-            tokio::task::spawn(bmp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
-        }
-        CollectorConfig::Bgp(cfg) => {
-            tokio::task::spawn(bgp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
-        }
-    }));
+    futures.extend(
+        cfg.collectors
+            .into_iter()
+            .map(|(_, collector)| match collector {
+                CollectorConfig::Bmp(cfg) => {
+                    tokio::task::spawn(bmp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
+                }
+                CollectorConfig::Bgp(cfg) => {
+                    tokio::task::spawn(bgp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
+                }
+            }),
+    );
 
     let mut sigint = signal(SignalKind::interrupt())?;
     let mut sigterm = signal(SignalKind::terminate())?;

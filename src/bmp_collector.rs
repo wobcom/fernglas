@@ -11,8 +11,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio_util::codec::length_delimited::LengthDelimitedCodec;
 use zettabgp::bmp::prelude::{
-    BmpMessagePeerDown, BmpMessagePeerHeader, BmpMessageRouteMonitoring,
-    BmpMessageTermination,
+    BmpMessagePeerDown, BmpMessagePeerHeader, BmpMessageRouteMonitoring, BmpMessageTermination,
 };
 use zettabgp::bmp::BmpMessage;
 
@@ -172,7 +171,7 @@ pub async fn run_client(
                     run_peer(client_addr, rm.peer.clone(), store)
                 });
                 channel.send(Ok(rm)).await.unwrap();
-            },
+            }
             BmpMessage::PeerUpNotification(n) => {
                 channels.insert(n.peer.peeraddress, run_peer(client_addr, n.peer, store));
             }
