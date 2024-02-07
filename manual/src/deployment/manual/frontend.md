@@ -7,7 +7,7 @@ Extract it to `/usr/local/share/fernglas-frontend`.
 
 ```
 $ sudo mkdir -p /usr/local/share/fernglas-frontend
-$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.1.0/fernglas-frontend-0.1.0.tar.xz | sudo tar -C /usr/local/share/fernglas-frontend -xJ
+$ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.2.1/fernglas-frontend-0.2.1.tar.xz | sudo tar -C /usr/local/share/fernglas-frontend -xJ
 ```
 
 Set up your reverse proxy / webserver.

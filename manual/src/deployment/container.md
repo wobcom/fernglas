@@ -14,7 +14,7 @@ We have two different images. One image contains the UI, which is statically bui
 ## Fernglas Backend
 
 ```sh
-docker pull ghcr.io/wobcom/fernglas:fernglas-0.1.0
+docker pull ghcr.io/wobcom/fernglas:fernglas-0.2.1
 ```
 
 You need to write a config file to specify Fernglas configuration. This needs to be put under `/config/config.yaml` in the standard configuration.
@@ -23,7 +23,7 @@ See the chapter on [configuration](configuration/README.md) for more information
 ## Fernglas Frontend
 
 ```sh
-docker pull ghcr.io/wobcom/fernglas-frontend:fernglas-0.1.0
+docker pull ghcr.io/wobcom/fernglas-frontend:fernglas-0.2.1
 ```
 
 By setting `serve_static: true` in the config, the backend will also serve the bundled frontend files from the same webserver as the API.
