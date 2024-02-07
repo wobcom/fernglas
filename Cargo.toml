@@ -1,7 +1,7 @@
 [package]
 name = "fernglas"
 description = "BGP & BMP looking glass"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 default-run = "fernglas"
 authors = [ "Yureka <yuka@yuka.dev>" ]
