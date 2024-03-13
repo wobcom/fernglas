@@ -207,6 +207,8 @@ pub trait Store: Clone + Send + Sync + 'static {
                     let nexthop = match updates.nexthop {
                         BgpAddr::V4(v4) => Some(IpAddr::from(v4)),
                         BgpAddr::V6(v6) => Some(IpAddr::from(v6)),
+                        BgpAddr::V4RD(v4) => Some(IpAddr::from(v4.addr)),
+                        BgpAddr::V6RD(v6) => Some(IpAddr::from(v6.addr)),
                         _ => None,
                     };
                     for net in bgp_addrs_to_nets(&updates.addrs) {
