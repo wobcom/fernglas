@@ -329,6 +329,56 @@ fn bgp_addrs_to_nets(addrs: &zettabgp::prelude::BgpAddrs) -> Vec<(PathId, IpNet)
                 }
             })
             .collect(),
+        BgpAddrs::VPNV4UP(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| {
+                let WithPathId { pathid, nlri } = addr;
+                match Ipv4Net::new(nlri.prefix.prefix.addr, nlri.prefix.prefix.prefixlen) {
+                    Ok(net) => Some((*pathid, IpNet::V4(net))),
+                    Err(_) => {
+                        warn!("invalid BgpAddrs prefixlen");
+                        None
+                    }
+                }
+            })
+            .collect(),
+        BgpAddrs::VPNV6UP(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| {
+                let WithPathId { pathid, nlri } = addr;
+                match Ipv6Net::new(nlri.prefix.prefix.addr, nlri.prefix.prefix.prefixlen) {
+                    Ok(net) => Some((*pathid, IpNet::V6(net))),
+                    Err(_) => {
+                        warn!("invalid BgpAddrs prefixlen");
+                        None
+                    }
+                }
+            })
+            .collect(),
+        BgpAddrs::VPNV4U(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| {
+                match Ipv4Net::new(addr.prefix.prefix.addr, addr.prefix.prefix.prefixlen) {
+                    Ok(net) => Some((0, IpNet::V4(net))),
+                    Err(_) => {
+                        warn!("invalid BgpAddrs prefixlen");
+                        None
+                    }
+                }
+            })
+            .collect(),
+        BgpAddrs::VPNV6U(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| {
+                match Ipv6Net::new(addr.prefix.prefix.addr, addr.prefix.prefix.prefixlen) {
+                    Ok(net) => Some((0, IpNet::V6(net))),
+                    Err(_) => {
+                        warn!("invalid BgpAddrs prefixlen");
+                        None
+                    }
+                }
+            })
+            .collect(),
         _ => vec![],
     }
 }
