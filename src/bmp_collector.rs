@@ -1,4 +1,6 @@
-use crate::store::{Client, RouteState, Session, SessionId, Store, TableSelector};
+use crate::store::{
+    Client, PeerDistinguisher, RouteState, Session, SessionId, Store, TableSelector,
+};
 use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
 use futures_util::future::join_all;
@@ -19,16 +21,36 @@ fn table_selector_for_peer(
     client_addr: SocketAddr,
     peer: &BmpMessagePeerHeader,
 ) -> Option<TableSelector> {
-    match (peer.peertype, peer.flags.view_bits::<Msb0>()[1]) {
-        (0, false) => Some(TableSelector::PrePolicyAdjIn(SessionId {
-            from_client: client_addr,
-            peer_address: peer.peeraddress,
-        })),
-        (0, true) => Some(TableSelector::PostPolicyAdjIn(SessionId {
-            from_client: client_addr,
-            peer_address: peer.peeraddress,
-        })),
-        (3, _) => Some(TableSelector::LocRib {
+    let peer_distinguisher = match peer.peertype {
+        0 => {
+            if peer.peerdistinguisher.is_zero() {
+                Some(PeerDistinguisher::Global)
+            } else {
+                warn!("Peer type global but peer distinguisher is not empty");
+                None
+            }
+        }
+        1 => Some(PeerDistinguisher::RD(
+            peer.peerdistinguisher.rdh,
+            peer.peerdistinguisher.rdl,
+        )),
+        2 => Some(PeerDistinguisher::Local(
+            peer.peerdistinguisher.rdh,
+            peer.peerdistinguisher.rdl,
+        )),
+        _ => None,
+    };
+
+    let session_id = peer_distinguisher.map(|peer_distinguisher| SessionId {
+        from_client: client_addr,
+        peer_distinguisher,
+        peer_address: peer.peeraddress,
+    });
+
+    match (peer.peertype, session_id, peer.flags.view_bits::<Msb0>()[1]) {
+        (0 | 1 | 2, Some(session), false) => Some(TableSelector::PrePolicyAdjIn(session)),
+        (0 | 1 | 2, Some(session), true) => Some(TableSelector::PostPolicyAdjIn(session)),
+        (3, _, _) => Some(TableSelector::LocRib {
             from_client: client_addr,
             route_state: RouteState::Selected,
         }),

@@ -29,9 +29,17 @@ pub struct RouteAttrs {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+pub enum PeerDistinguisher {
+    Global,
+    RD(u32, u32),
+    Local(u32, u32),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionId {
     pub from_client: SocketAddr,
+    pub peer_distinguisher: PeerDistinguisher,
     pub peer_address: IpAddr,
 }
 
