@@ -23,6 +23,8 @@ pub async fn run_peer(
     let mut caps = vec![
         BgpCapability::SafiIPv4u,
         BgpCapability::SafiIPv6u,
+        BgpCapability::SafiVPNv4u,
+        BgpCapability::SafiVPNv6u,
         BgpCapability::CapRR,
         BgpCapability::CapASN32(cfg.asn),
     ];
@@ -30,6 +32,8 @@ pub async fn run_peer(
         caps.push(BgpCapability::CapAddPath(vec![
             BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv4u, true, true).unwrap(),
             BgpCapAddPath::new_from_cap(BgpCapability::SafiIPv6u, true, true).unwrap(),
+            BgpCapAddPath::new_from_cap(BgpCapability::SafiVPNv4u, true, true).unwrap(),
+            BgpCapAddPath::new_from_cap(BgpCapability::SafiVPNv6u, true, true).unwrap(),
         ]));
     }
 
