@@ -88,7 +88,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="../introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="../deployment/index.html"><strong aria-hidden="true">2.</strong> Deployment</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../deployment/nixos.html"><strong aria-hidden="true">2.1.</strong> Using NixOS</a></li><li class="chapter-item expanded "><a href="../deployment/container.html"><strong aria-hidden="true">2.2.</strong> Using Containers / Docker</a></li><li class="chapter-item expanded "><a href="../deployment/manual/index.html"><strong aria-hidden="true">2.3.</strong> Manual Setup</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../deployment/manual/backend.html"><strong aria-hidden="true">2.3.1.</strong> Backend</a></li><li class="chapter-item expanded "><a href="../deployment/manual/frontend.html"><strong aria-hidden="true">2.3.2.</strong> Frontend and Reverse Proxy</a></li></ol></li></ol></li><li class="chapter-item expanded "><a href="../configuration/index.html"><strong aria-hidden="true">3.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../configuration/bmp-junos.html"><strong aria-hidden="true">3.1.</strong> Junos using BMP</a></li><li class="chapter-item expanded "><a href="../configuration/bgp-bird2.html"><strong aria-hidden="true">3.2.</strong> bird2 using BGP</a></li></ol></li><li class="chapter-item expanded "><a href="../appendix/index.html"><strong aria-hidden="true">4.</strong> Appendix</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../appendix/nixos-specialArgs-pattern.html" class="active"><strong aria-hidden="true">4.1.</strong> NixOS specialArgs pattern</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="../introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="../deployment/index.html"><strong aria-hidden="true">2.</strong> Deployment</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../deployment/nixos.html"><strong aria-hidden="true">2.1.</strong> Using NixOS</a></li><li class="chapter-item expanded "><a href="../deployment/container.html"><strong aria-hidden="true">2.2.</strong> Using Containers / Docker</a></li><li class="chapter-item expanded "><a href="../deployment/manual/index.html"><strong aria-hidden="true">2.3.</strong> Manual Setup</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../deployment/manual/backend.html"><strong aria-hidden="true">2.3.1.</strong> Backend</a></li><li class="chapter-item expanded "><a href="../deployment/manual/frontend.html"><strong aria-hidden="true">2.3.2.</strong> Frontend and Reverse Proxy</a></li></ol></li></ol></li><li class="chapter-item expanded "><a href="../configuration/index.html"><strong aria-hidden="true">3.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../configuration/bmp-junos.html"><strong aria-hidden="true">3.1.</strong> Junos using BMP</a></li><li class="chapter-item expanded "><a href="../configuration/bgp-bird2.html"><strong aria-hidden="true">3.2.</strong> bird2 using BGP</a></li><li class="chapter-item expanded "><a href="../configuration/routing-instances.html"><strong aria-hidden="true">3.3.</strong> VRF/Routing-Instances</a></li></ol></li><li class="chapter-item expanded "><a href="../appendix/index.html"><strong aria-hidden="true">4.</strong> Appendix</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="../appendix/nixos-specialArgs-pattern.html" class="active"><strong aria-hidden="true">4.1.</strong> NixOS specialArgs pattern</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -178,18 +178,18 @@
 <p>problem: you want to get the home-manager nixos module from the home-manager flake into a nixos config:</p>
 <p>the home-manager documentation says this: https://nix-community.github.io/home-manager/index.html#sec-flakes-nixos-module</p>
 <pre><code class="language-nix">{
-  description = &quot;NixOS configuration&quot;;
+  description = "NixOS configuration";
 
   inputs = {
-    nixpkgs.url = &quot;github:nixos/nixpkgs/nixos-unstable&quot;;
-    home-manager.url = &quot;github:nix-community/home-manager&quot;;
-    home-manager.inputs.nixpkgs.follows = &quot;nixpkgs&quot;;
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    home-manager.url = "github:nix-community/home-manager";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ nixpkgs, home-manager, ... }: {
     nixosConfigurations = {
       hostname = nixpkgs.lib.nixosSystem {
-        system = &quot;x86_64-linux&quot;;
+        system = "x86_64-linux";
         modules = [
           ./configuration.nix
           home-manager.nixosModules.home-manager
@@ -207,26 +207,26 @@
   };
 }
 </code></pre>
-<p>I find this ugly, because it forces to have the home manager include (<code>modules = [ ... home-manager.nixosModules.home-manager ...  ];</code>) in the flake.nix, because only there the inputs or home-manager attrset is in scope</p>
-<p>In &quot;old&quot; configurations, with niv or plain fetchTarball, you would have done this in the configuration.nix of the respective host(, or a common.nix, if it should be included on all hosts)
+<p>I find this ugly, because it forces to have the home manager include (<code>modules = [ ... home-manager.nixosModules.home-manager ...   ];</code>) in the flake.nix, because only there the inputs or home-manager attrset is in scope</p>
+<p>In "old" configurations, with niv or plain fetchTarball, you would have done this in the configuration.nix of the respective host(, or a common.nix, if it should be included on all hosts)
 <code>imports = [ &lt;home-manager/nixos&gt; ];</code>
 actually <em>anywhere</em> in <em>any</em> nixos config file</p>
 <p>The solution is the following:</p>
 <p>flake.nix</p>
 <pre><code class="language-nix">
 {
-  description = &quot;NixOS configuration&quot;;
+  description = "NixOS configuration";
 
   inputs = {
-    nixpkgs.url = &quot;github:nixos/nixpkgs/nixos-unstable&quot;;
-    home-manager.url = &quot;github:nix-community/home-manager&quot;;
-    home-manager.inputs.nixpkgs.follows = &quot;nixpkgs&quot;;
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    home-manager.url = "github:nix-community/home-manager";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ nixpkgs, ... }: {
     nixosConfigurations = {
       hostname = nixpkgs.lib.nixosSystem {
-        system = &quot;x86_64-linux&quot;;
+        system = "x86_64-linux";
         specialArgs = { inherit inputs; };
         modules = [
           ./configuration.nix
@@ -240,7 +240,7 @@ actually <em>anywhere</em> in <em>any</em> nixos config file</p>
 <pre><code class="language-nix">{ pkgs, lib, config, inputs, ... }:
 
 {
-  networking.hostName = &quot;foo&quot;;
+  networking.hostName = "foo";
   [...]
 
   imports = [
@@ -253,7 +253,7 @@ actually <em>anywhere</em> in <em>any</em> nixos config file</p>
 </code></pre>
 <p>specialArgs means, the <code>inputs</code> attrset is now available in the module args in every nixos module. just add it to the function parameters anywhere you need it, like you do it with <code>pkgs</code>, <code>lib</code> and <code>config</code>.
 specialArgs also means that in contrast to <code>_module.args</code> this parameter to the module system is fixed, and can not be changed by nixos modules themselves. this prevents infinite recursions when using stuff from the inputs attrset in nixos module imports (which is exactly what we want to do).</p>
-<p>and like this using flake inputs in nixos configs becomes much easier and more natural. in many cases you can rewrite &quot;old&quot; configs 1:1 to this new pattern without moving the includes to flake.nix</p>
+<p>and like this using flake inputs in nixos configs becomes much easier and more natural. in many cases you can rewrite "old" configs 1:1 to this new pattern without moving the includes to flake.nix</p>
 
                     </main>
 

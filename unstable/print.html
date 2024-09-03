@@ -89,7 +89,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded "><a href="introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="deployment/index.html"><strong aria-hidden="true">2.</strong> Deployment</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="deployment/nixos.html"><strong aria-hidden="true">2.1.</strong> Using NixOS</a></li><li class="chapter-item expanded "><a href="deployment/container.html"><strong aria-hidden="true">2.2.</strong> Using Containers / Docker</a></li><li class="chapter-item expanded "><a href="deployment/manual/index.html"><strong aria-hidden="true">2.3.</strong> Manual Setup</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="deployment/manual/backend.html"><strong aria-hidden="true">2.3.1.</strong> Backend</a></li><li class="chapter-item expanded "><a href="deployment/manual/frontend.html"><strong aria-hidden="true">2.3.2.</strong> Frontend and Reverse Proxy</a></li></ol></li></ol></li><li class="chapter-item expanded "><a href="configuration/index.html"><strong aria-hidden="true">3.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="configuration/bmp-junos.html"><strong aria-hidden="true">3.1.</strong> Junos using BMP</a></li><li class="chapter-item expanded "><a href="configuration/bgp-bird2.html"><strong aria-hidden="true">3.2.</strong> bird2 using BGP</a></li></ol></li><li class="chapter-item expanded "><a href="appendix/index.html"><strong aria-hidden="true">4.</strong> Appendix</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="appendix/nixos-specialArgs-pattern.html"><strong aria-hidden="true">4.1.</strong> NixOS specialArgs pattern</a></li></ol></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded "><a href="introduction.html"><strong aria-hidden="true">1.</strong> Introduction</a></li><li class="chapter-item expanded "><a href="deployment/index.html"><strong aria-hidden="true">2.</strong> Deployment</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="deployment/nixos.html"><strong aria-hidden="true">2.1.</strong> Using NixOS</a></li><li class="chapter-item expanded "><a href="deployment/container.html"><strong aria-hidden="true">2.2.</strong> Using Containers / Docker</a></li><li class="chapter-item expanded "><a href="deployment/manual/index.html"><strong aria-hidden="true">2.3.</strong> Manual Setup</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="deployment/manual/backend.html"><strong aria-hidden="true">2.3.1.</strong> Backend</a></li><li class="chapter-item expanded "><a href="deployment/manual/frontend.html"><strong aria-hidden="true">2.3.2.</strong> Frontend and Reverse Proxy</a></li></ol></li></ol></li><li class="chapter-item expanded "><a href="configuration/index.html"><strong aria-hidden="true">3.</strong> Configuration</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="configuration/bmp-junos.html"><strong aria-hidden="true">3.1.</strong> Junos using BMP</a></li><li class="chapter-item expanded "><a href="configuration/bgp-bird2.html"><strong aria-hidden="true">3.2.</strong> bird2 using BGP</a></li><li class="chapter-item expanded "><a href="configuration/routing-instances.html"><strong aria-hidden="true">3.3.</strong> VRF/Routing-Instances</a></li></ol></li><li class="chapter-item expanded "><a href="appendix/index.html"><strong aria-hidden="true">4.</strong> Appendix</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="appendix/nixos-specialArgs-pattern.html"><strong aria-hidden="true">4.1.</strong> NixOS specialArgs pattern</a></li></ol></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle">
                 <div class="sidebar-resize-indicator"></div>
@@ -189,9 +189,9 @@
 </code></pre>
 <p>Add fernglas to your flake inputs:</p>
 <pre><code class="language-nix">inputs.fernglas = {
-  type = &quot;github&quot;;
-  owner = &quot;wobcom&quot;;
-  repo = &quot;fernglas&quot;;
+  type = "github";
+  owner = "wobcom";
+  repo = "fernglas";
 };
 </code></pre>
 <p>Import the fernglas NixOS module and declare your configuration.</p>
@@ -207,13 +207,13 @@ in {
   services.fernglas = {
     enable = true;
     settings = {
-      api.bind = &quot;[::1]:3000&quot;;
+      api.bind = "[::1]:3000";
       collectors = {
         my_bmp_collector = {
-          collector_type = &quot;Bmp&quot;;
-          bind = &quot;[::]:${toString bmpPort}&quot;;
+          collector_type = "Bmp";
+          bind = "[::]:${toString bmpPort}";
           peers = {
-            &quot;192.0.2.1&quot; = {};
+            "192.0.2.1" = {};
           };
         };
       };
@@ -230,11 +230,11 @@ in {
   services.nginx = {
     enable = true;
     recommendedProxySettings = true;
-    virtualHosts.&quot;lg.example.org&quot; = {
+    virtualHosts."lg.example.org" = {
       enableACME = true;
       forceSSL = true;
-      locations.&quot;/&quot;.root = inputs.fernglas.packages.${config.nixpkgs.hostPlatform.system}.fernglas-frontend;
-      locations.&quot;/api/&quot;.proxyPass = &quot;http://${config.services.fernglas.settings.api.bind}&quot;;
+      locations."/".root = inputs.fernglas.packages.${config.nixpkgs.hostPlatform.system}.fernglas-frontend;
+      locations."/api/".proxyPass = "http://${config.services.fernglas.settings.api.bind}";
     };
   };
 
@@ -252,7 +252,7 @@ in {
 </li>
 <li>You need to have a working reverse proxy setup
 <ul>
-<li>Fernglas only exposes HTTP. TLS and probably authentication needs to be handled by yourself. </li>
+<li>Fernglas only exposes HTTP. TLS and probably authentication needs to be handled by yourself.</li>
 </ul>
 </li>
 <li>A Domain or Subdomain
@@ -279,12 +279,12 @@ $ wget -O- https://github.com/wobcom/fernglas/releases/download/fernglas-0.2.1/f
 </code></pre>
 <p>File: /etc/fernglas/config.yml</p>
 <pre><code class="language-yaml">api:
-  bind: &quot;[::1]:3000&quot;
+  bind: "[::1]:3000"
 collectors:
   - collector_type: Bmp
-    bind: &quot;[::]:11019&quot;
+    bind: "[::]:11019"
     peers:
-      &quot;192.0.2.1&quot;: {}
+      "192.0.2.1": {}
 </code></pre>
 <p>systemd service with hardening options:</p>
 <p>File: /etc/systemd/system/fernglas.service</p>
@@ -346,32 +346,32 @@ collectors:
 
   # BMP collector that listens on port 11019 and accepts all incoming connections
   - collector_type: Bmp
-    bind: &quot;[::]:11019&quot;
+    bind: "[::]:11019"
     default_peer_config: {}
 
   # BMP collector that listens on the privileged port 11020 and accepts incoming connections only from select client IPs
   - collector_type: Bmp
-    bind: &quot;[::]:11020&quot;
+    bind: "[::]:11020"
     peers:
-      &quot;192.0.2.1&quot;: {}
-      &quot;192.0.2.2&quot;:
+      "192.0.2.1": {}
+      "192.0.2.2":
         name_override: router02.example.org
 
   # BGP collector that listens on port 1179 and accept all  incoming connections
   - collector_type: Bgp
-    bind: &quot;[::]:1179&quot;
+    bind: "[::]:1179"
     default_peer_config:
       asn: 64496
       router_id: 192.0.2.100
 
   # BGP collector that listens on the privileged port 179 and accepts incoming connections only from select client IPs
   - collector_type: Bgp
-    bind: &quot;[::]:179&quot;
+    bind: "[::]:179"
     peers:
-      &quot;192.0.2.1&quot;:
+      "192.0.2.1":
         asn: 64496
 	router_id: 192.0.2.100
-      &quot;192.0.2.2&quot;:
+      "192.0.2.2":
         asn: 64496
 	router_id: 192.0.2.100
         name_override: router02.example.org
@@ -385,6 +385,7 @@ collectors:
 <li><code>asn</code> (required): AS Number advertised to peer</li>
 <li><code>router_id</code> (required): Router ID advertised to peer</li>
 <li><code>name_override</code> (optional): Use this string instead of the hostname advertised in the <a href="https://www.ietf.org/archive/id/draft-walton-bgp-hostname-capability-02.txt">BGP hostname capability</a></li>
+<li><code>route_distinguisher</code> (optional): Routes belonging to this route-distinguisher are advertised in the default table. See <a href="configuration/./routing-instances.html">VRF/Routing-Instances</a> for more information</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="junos-using-bmp"><a class="header" href="#junos-using-bmp">Junos using BMP</a></h1>
 <pre><code>routing-options {
@@ -433,24 +434,43 @@ collectors:
   };
 }
 </code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="vrfrouting-instances"><a class="header" href="#vrfrouting-instances">VRF/Routing-Instances</a></h1>
+<p>VRFs/Routing-Instances are supported out of the box and do not need any
+configuration for BMP- and MPBGP-Sessions.</p>
+<h2 id="bgp-session-in-vrf"><a class="header" href="#bgp-session-in-vrf">BGP Session in VRF</a></h2>
+<p>If the BGP Session (on the router) belongs to a routing-instance fernglas should
+be configured to belong to the same RI:</p>
+<pre><code># config.yml
+collectors:
+    bgp_peer:
+        bind: "192.0.2.1:179"
+        default_peer_config:
+            asn: 64496
+            router_id: 192.0.2.1
+            # same RD as peer
+            route_distinguisher: 192.1.2.5:100
+</code></pre>
+<p>If this configuration is missing routes would be added as if they were in the
+default routing-instance instead of the routing-instance (and consequently matched when
+querying for routes of the default routing-instance.)</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="appendix"><a class="header" href="#appendix">Appendix</a></h1>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="nixos-specialargs-pattern"><a class="header" href="#nixos-specialargs-pattern">NixOS specialArgs pattern</a></h1>
 <h3 id="borrowed-from-here"><a class="header" href="#borrowed-from-here">Borrowed from <a href="https://pad.yuka.dev/s/DpS0wJ4R6#">here</a></a></h3>
 <p>problem: you want to get the home-manager nixos module from the home-manager flake into a nixos config:</p>
 <p>the home-manager documentation says this: https://nix-community.github.io/home-manager/index.html#sec-flakes-nixos-module</p>
 <pre><code class="language-nix">{
-  description = &quot;NixOS configuration&quot;;
+  description = "NixOS configuration";
 
   inputs = {
-    nixpkgs.url = &quot;github:nixos/nixpkgs/nixos-unstable&quot;;
-    home-manager.url = &quot;github:nix-community/home-manager&quot;;
-    home-manager.inputs.nixpkgs.follows = &quot;nixpkgs&quot;;
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    home-manager.url = "github:nix-community/home-manager";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ nixpkgs, home-manager, ... }: {
     nixosConfigurations = {
       hostname = nixpkgs.lib.nixosSystem {
-        system = &quot;x86_64-linux&quot;;
+        system = "x86_64-linux";
         modules = [
           ./configuration.nix
           home-manager.nixosModules.home-manager
@@ -468,26 +488,26 @@ collectors:
   };
 }
 </code></pre>
-<p>I find this ugly, because it forces to have the home manager include (<code>modules = [ ... home-manager.nixosModules.home-manager ...  ];</code>) in the flake.nix, because only there the inputs or home-manager attrset is in scope</p>
-<p>In &quot;old&quot; configurations, with niv or plain fetchTarball, you would have done this in the configuration.nix of the respective host(, or a common.nix, if it should be included on all hosts)
+<p>I find this ugly, because it forces to have the home manager include (<code>modules = [ ... home-manager.nixosModules.home-manager ...   ];</code>) in the flake.nix, because only there the inputs or home-manager attrset is in scope</p>
+<p>In "old" configurations, with niv or plain fetchTarball, you would have done this in the configuration.nix of the respective host(, or a common.nix, if it should be included on all hosts)
 <code>imports = [ &lt;home-manager/nixos&gt; ];</code>
 actually <em>anywhere</em> in <em>any</em> nixos config file</p>
 <p>The solution is the following:</p>
 <p>flake.nix</p>
 <pre><code class="language-nix">
 {
-  description = &quot;NixOS configuration&quot;;
+  description = "NixOS configuration";
 
   inputs = {
-    nixpkgs.url = &quot;github:nixos/nixpkgs/nixos-unstable&quot;;
-    home-manager.url = &quot;github:nix-community/home-manager&quot;;
-    home-manager.inputs.nixpkgs.follows = &quot;nixpkgs&quot;;
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    home-manager.url = "github:nix-community/home-manager";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs@{ nixpkgs, ... }: {
     nixosConfigurations = {
       hostname = nixpkgs.lib.nixosSystem {
-        system = &quot;x86_64-linux&quot;;
+        system = "x86_64-linux";
         specialArgs = { inherit inputs; };
         modules = [
           ./configuration.nix
@@ -501,7 +521,7 @@ actually <em>anywhere</em> in <em>any</em> nixos config file</p>
 <pre><code class="language-nix">{ pkgs, lib, config, inputs, ... }:
 
 {
-  networking.hostName = &quot;foo&quot;;
+  networking.hostName = "foo";
   [...]
 
   imports = [
@@ -514,7 +534,7 @@ actually <em>anywhere</em> in <em>any</em> nixos config file</p>
 </code></pre>
 <p>specialArgs means, the <code>inputs</code> attrset is now available in the module args in every nixos module. just add it to the function parameters anywhere you need it, like you do it with <code>pkgs</code>, <code>lib</code> and <code>config</code>.
 specialArgs also means that in contrast to <code>_module.args</code> this parameter to the module system is fixed, and can not be changed by nixos modules themselves. this prevents infinite recursions when using stuff from the inputs attrset in nixos module imports (which is exactly what we want to do).</p>
-<p>and like this using flake inputs in nixos configs becomes much easier and more natural. in many cases you can rewrite &quot;old&quot; configs 1:1 to this new pattern without moving the includes to flake.nix</p>
+<p>and like this using flake inputs in nixos configs becomes much easier and more natural. in many cases you can rewrite "old" configs 1:1 to this new pattern without moving the includes to flake.nix</p>
 
                     </main>
 
