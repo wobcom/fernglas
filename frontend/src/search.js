@@ -20,7 +20,7 @@ const formSubmit = (e) => {
 	if (router != "all") {
 		filter.push(`Router=${router}`);
 	}
-	if (typeof table !== "undefined" && table != "default") {
+	if (typeof table === "string" && table != "default" && table != "") {
 		filter.push(`route_distinguisher=${table}`);
 	}
 	if (filter.length > 0) {
