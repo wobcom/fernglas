@@ -88,8 +88,6 @@ const processResults = (results) => {
 	const asnMap = Object.fromEntries(asnResults.map(r => [r.asn, r.asn_name ]));
 	const communityMap = Object.fromEntries(communityResults.map(r => [r.community, r.community_description ]));
 
-	console.log(asnMap, communityMap, dnsMap);
-
 	// stage 1, combine pre- and post-policy adj-in tables
 	// start out with PostPolicy
 	const preAndPostPolicy = {};
