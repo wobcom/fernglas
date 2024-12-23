@@ -16,27 +16,31 @@ If using BMP, everything should 'just work'.
 collectors:
 
   # BMP collector that listens on port 11019 and accepts all incoming connections
-  - collector_type: Bmp
+  bmp_any:
+    collector_type: Bmp
     bind: "[::]:11019"
     default_peer_config: {}
 
-  # BMP collector that listens on the privileged port 11020 and accepts incoming connections only from select client IPs
-  - collector_type: Bmp
+  # BMP collector that listens on port 11020 and accepts incoming connections only from select client IPs
+  bmp_filtered:
+    collector_type: Bmp
     bind: "[::]:11020"
     peers:
       "192.0.2.1": {}
       "192.0.2.2":
         name_override: router02.example.org
 
-  # BGP collector that listens on port 1179 and accept all  incoming connections
-  - collector_type: Bgp
+  # BGP collector that listens on port 1179 and accept all incoming connections
+  bgp_any:
+    collector_type: Bgp
     bind: "[::]:1179"
     default_peer_config:
       asn: 64496
       router_id: 192.0.2.100
 
   # BGP collector that listens on the privileged port 179 and accepts incoming connections only from select client IPs
-  - collector_type: Bgp
+  bgp_filtered:
+    collector_type: Bgp
     bind: "[::]:179"
     peers:
       "192.0.2.1":
