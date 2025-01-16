@@ -270,7 +270,7 @@ impl<T: Send + Sync> Node<T> {
         results_iter.chain(children_iter)
     }
 
-    fn keys_with_prefix<'a>(&'a self, prefix: Key) -> impl Iterator<Item = Key> + Send + Sync + '_ {
+    fn keys_with_prefix<'a>(&'a self, prefix: Key) -> impl Iterator<Item = Key> + Send + Sync + 'a {
         let results_keys_iter = self.bitmap.results_keys_with_prefix(prefix.clone());
         let children_keys_iter = self.children()
             .flat_map(move |(child_key, child)| {
