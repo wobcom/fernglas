@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use futures_util::Stream;
 use futures_util::StreamExt;
 use ipnet::IpNet;
@@ -98,7 +97,6 @@ impl InMemoryStore {
     }
 }
 
-#[async_trait]
 impl Store for InMemoryStore {
     #[autometrics::autometrics]
     async fn update_route(

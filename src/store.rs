@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use futures_util::Stream;
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use log::*;
@@ -178,17 +177,21 @@ impl Default for QueryLimits {
     }
 }
 
-#[async_trait]
 pub trait Store: Clone + Send + Sync + 'static {
-    async fn update_route(
+    fn update_route(
         &self,
         path_id: PathId,
         net: IpNet,
         table: TableSelector,
         attrs: RouteAttrs,
-    );
+    ) -> impl std::future::Future<Output = ()> + std::marker::Send;
 
-    async fn withdraw_route(&self, path_id: PathId, net: IpNet, table: TableSelector);
+    fn withdraw_route(
+        &self,
+        path_id: PathId,
+        net: IpNet,
+        table: TableSelector,
+    ) -> impl std::future::Future<Output = ()> + std::marker::Send;
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>>;
 
@@ -196,126 +199,139 @@ pub trait Store: Clone + Send + Sync + 'static {
 
     fn get_routing_instances(&self) -> HashMap<SocketAddr, HashSet<RouteDistinguisher>>;
 
-    async fn client_up(
+    fn client_up(
         &self,
         client_addr: SocketAddr,
         route_state: RouteState,
         client_data: Client,
-    );
+    ) -> impl std::future::Future<Output = ()> + std::marker::Send;
 
-    async fn client_down(&self, client_addr: SocketAddr);
+    fn client_down(
+        &self,
+        client_addr: SocketAddr,
+    ) -> impl std::future::Future<Output = ()> + std::marker::Send;
 
-    async fn session_up(&self, session: SessionId, session_data: Session);
+    fn session_up(
+        &self,
+        session: SessionId,
+        session_data: Session,
+    ) -> impl std::future::Future<Output = ()> + std::marker::Send;
 
-    async fn session_down(&self, session: SessionId, new_state: Option<Session>);
+    fn session_down(
+        &self,
+        session: SessionId,
+        new_state: Option<Session>,
+    ) -> impl std::future::Future<Output = ()> + std::marker::Send;
 
-    async fn insert_bgp_update(
+    fn insert_bgp_update(
         &self,
         session: TableSelector,
         update: zettabgp::prelude::BgpUpdateMessage,
-    ) {
-        use zettabgp::prelude::*;
-        let mut attrs: RouteAttrs = Default::default();
-        let mut nexthop = None;
-        let mut update_nets = vec![];
-        let mut withdraw_nets = vec![];
-        for attr in update.attrs {
-            match attr {
-                BgpAttrItem::MPUpdates(updates) => {
-                    let nexthop = match updates.nexthop {
-                        BgpAddr::V4(v4) => Some(IpAddr::from(v4)),
-                        BgpAddr::V6(v6) => Some(IpAddr::from(v6)),
-                        _ => None,
-                    };
-                    for net in bgp_addrs_to_nets(&updates.addrs) {
-                        update_nets.push((net, nexthop));
+    ) -> impl std::future::Future<Output = ()> + std::marker::Send {
+        async move {
+            use zettabgp::prelude::*;
+            let mut attrs: RouteAttrs = Default::default();
+            let mut nexthop = None;
+            let mut update_nets = vec![];
+            let mut withdraw_nets = vec![];
+            for attr in update.attrs {
+                match attr {
+                    BgpAttrItem::MPUpdates(updates) => {
+                        let nexthop = match updates.nexthop {
+                            BgpAddr::V4(v4) => Some(IpAddr::from(v4)),
+                            BgpAddr::V6(v6) => Some(IpAddr::from(v6)),
+                            _ => None,
+                        };
+                        for net in bgp_addrs_to_nets(&updates.addrs) {
+                            update_nets.push((net, nexthop));
+                        }
                     }
-                }
-                BgpAttrItem::MPWithdraws(withdraws) => {
-                    for net in bgp_addrs_to_nets(&withdraws.addrs) {
-                        withdraw_nets.push(net);
+                    BgpAttrItem::MPWithdraws(withdraws) => {
+                        for net in bgp_addrs_to_nets(&withdraws.addrs) {
+                            withdraw_nets.push(net);
+                        }
                     }
-                }
-                BgpAttrItem::NextHop(BgpNextHop { value }) => {
-                    nexthop = Some(value);
-                }
-                BgpAttrItem::CommunityList(BgpCommunityList { value }) => {
-                    let mut communities = vec![];
-                    for community in value.into_iter() {
-                        communities.push((
-                            (community.value >> 16) as u16,
-                            (community.value & 0xffff) as u16,
-                        ));
+                    BgpAttrItem::NextHop(BgpNextHop { value }) => {
+                        nexthop = Some(value);
                     }
-                    attrs.communities = Some(communities);
-                }
-                BgpAttrItem::MED(BgpMED { value }) => {
-                    attrs.med = Some(value);
-                }
-                BgpAttrItem::LocalPref(BgpLocalpref { value }) => {
-                    attrs.local_pref = Some(value);
-                }
-                BgpAttrItem::Origin(BgpOrigin { value }) => {
-                    attrs.origin = Some(match value {
-                        BgpAttrOrigin::Igp => RouteOrigin::Igp,
-                        BgpAttrOrigin::Egp => RouteOrigin::Egp,
-                        BgpAttrOrigin::Incomplete => RouteOrigin::Incomplete,
-                    })
-                }
-                BgpAttrItem::ASPath(BgpASpath { value }) => {
-                    let mut as_path = vec![];
-                    for asn in value {
-                        as_path.push(asn.value);
+                    BgpAttrItem::CommunityList(BgpCommunityList { value }) => {
+                        let mut communities = vec![];
+                        for community in value.into_iter() {
+                            communities.push((
+                                (community.value >> 16) as u16,
+                                (community.value & 0xffff) as u16,
+                            ));
+                        }
+                        attrs.communities = Some(communities);
                     }
-                    attrs.as_path = Some(as_path);
-                }
-                BgpAttrItem::LargeCommunityList(BgpLargeCommunityList { value }) => {
-                    let mut communities = vec![];
-                    for community in value.into_iter() {
-                        communities.push((community.ga, community.ldp1, community.ldp2));
+                    BgpAttrItem::MED(BgpMED { value }) => {
+                        attrs.med = Some(value);
                     }
-                    attrs.large_communities = Some(communities);
+                    BgpAttrItem::LocalPref(BgpLocalpref { value }) => {
+                        attrs.local_pref = Some(value);
+                    }
+                    BgpAttrItem::Origin(BgpOrigin { value }) => {
+                        attrs.origin = Some(match value {
+                            BgpAttrOrigin::Igp => RouteOrigin::Igp,
+                            BgpAttrOrigin::Egp => RouteOrigin::Egp,
+                            BgpAttrOrigin::Incomplete => RouteOrigin::Incomplete,
+                        })
+                    }
+                    BgpAttrItem::ASPath(BgpASpath { value }) => {
+                        let mut as_path = vec![];
+                        for asn in value {
+                            as_path.push(asn.value);
+                        }
+                        attrs.as_path = Some(as_path);
+                    }
+                    BgpAttrItem::LargeCommunityList(BgpLargeCommunityList { value }) => {
+                        let mut communities = vec![];
+                        for community in value.into_iter() {
+                            communities.push((community.ga, community.ldp1, community.ldp2));
+                        }
+                        attrs.large_communities = Some(communities);
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
-        }
-        for net in bgp_addrs_to_nets(&update.updates).into_iter() {
-            update_nets.push((net, nexthop));
-        }
-        for net in bgp_addrs_to_nets(&update.withdraws).into_iter() {
-            withdraw_nets.push(net);
-        }
+            for net in bgp_addrs_to_nets(&update.updates).into_iter() {
+                update_nets.push((net, nexthop));
+            }
+            for net in bgp_addrs_to_nets(&update.withdraws).into_iter() {
+                withdraw_nets.push(net);
+            }
 
-        for ((mut rd, path, prefix), nexthop) in update_nets {
-            if rd.is_default() {
-                rd = session.route_distinguisher
+            for ((mut rd, path, prefix), nexthop) in update_nets {
+                if rd.is_default() {
+                    rd = session.route_distinguisher
+                }
+                let mut attrs = attrs.clone();
+                attrs.nexthop = nexthop;
+                self.update_route(
+                    path,
+                    prefix,
+                    TableSelector {
+                        route_distinguisher: rd,
+                        ..session.clone()
+                    },
+                    attrs,
+                )
+                .await;
             }
-            let mut attrs = attrs.clone();
-            attrs.nexthop = nexthop;
-            self.update_route(
-                path,
-                prefix,
-                TableSelector {
-                    route_distinguisher: rd,
-                    ..session.clone()
-                },
-                attrs,
-            )
-            .await;
-        }
-        for (mut rd, path, prefix) in withdraw_nets {
-            if rd.is_default() {
-                rd = session.route_distinguisher
+            for (mut rd, path, prefix) in withdraw_nets {
+                if rd.is_default() {
+                    rd = session.route_distinguisher
+                }
+                self.withdraw_route(
+                    path,
+                    prefix,
+                    TableSelector {
+                        route_distinguisher: rd,
+                        ..session.clone()
+                    },
+                )
+                .await;
             }
-            self.withdraw_route(
-                path,
-                prefix,
-                TableSelector {
-                    route_distinguisher: rd,
-                    ..session.clone()
-                },
-            )
-            .await;
         }
     }
 }
