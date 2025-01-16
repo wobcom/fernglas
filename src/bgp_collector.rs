@@ -2,11 +2,12 @@ use crate::bgpdumper::BgpDumper;
 use crate::route_distinguisher::RouteDistinguisher;
 use crate::store::{Client, RouteState, SessionId, Store, TableSelector, TableType};
 use futures_util::future::join_all;
-use futures_util::{pin_mut, StreamExt};
+use futures_util::TryStreamExt;
 use log::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::pin::pin;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use zettabgp::prelude::BgpNotificationMessage;
@@ -43,8 +44,7 @@ pub async fn run_peer(
         stream,
     );
     let open_message = dumper.start_active().await?;
-    let stream = dumper.lifecycle();
-    pin_mut!(stream);
+    let mut stream = dumper.lifecycle();
     let client_name = cfg
         .name_override
         .or(open_message.caps.iter().find_map(|x| {
@@ -70,11 +70,11 @@ pub async fn run_peer(
         )
         .await;
     loop {
-        let update = match stream.next().await {
-            Some(Ok(update)) => update,
-            Some(Err(Ok(notification))) => break Ok(notification),
-            Some(Err(Err(e))) => anyhow::bail!(e),
-            None => panic!(),
+        let update = match pin!(stream.try_next()).await {
+            Ok(Some(update)) => update,
+            Ok(None) => panic!(),
+            Err(Ok(notification)) => break Ok(notification),
+            Err(Err(e)) => anyhow::bail!(e),
         };
         store
             .insert_bgp_update(

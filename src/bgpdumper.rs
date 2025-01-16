@@ -2,8 +2,9 @@
 // Melnikov, which is licensed under the MIT license.
 
 use bytes::{Buf, BytesMut};
-use futures_util::Stream;
 use futures_util::StreamExt;
+use futures_util::TryStream;
+use futures_util::TryStreamExt;
 use log::*;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
@@ -51,7 +52,11 @@ impl BgpDumper {
             .params
             .prepare_message_buf(&mut buf, BgpMessageType::Open, messagelen)?;
         self.write.lock().await.write_all(&buf[0..blen]).await?;
-        let (msgtype, buf) = self.next_message().await?;
+        let (msgtype, buf) = self
+            .messages()
+            .try_next()
+            .await?
+            .ok_or(BgpError::static_str("Expected open message"))?;
         if msgtype != BgpMessageType::Open {
             return Err(BgpError::static_str("Invalid state to start_active"));
         }
@@ -84,51 +89,61 @@ impl BgpDumper {
         });
         tx
     }
-    async fn next_message(&mut self) -> Result<(BgpMessageType, BytesMut), BgpError> {
-        let mut buf = self
-            .read
-            .next()
-            .await
-            .ok_or(BgpError::static_str("unexpected end of stream"))??;
-        let msg = self.params.decode_message_head(&buf)?;
-        buf.advance(19);
-        buf.truncate(msg.1);
-        Ok((msg.0, buf))
+    fn messages(
+        &mut self,
+    ) -> impl TryStream<Ok = (BgpMessageType, BytesMut), Error = BgpError> + Send + Unpin + use<'_>
+    {
+        (&mut self.read).map(|buf| {
+            let mut buf = buf?;
+            let msg = self.params.decode_message_head(&buf)?;
+            buf.advance(19);
+            buf.truncate(msg.1);
+            Ok((msg.0, buf))
+        })
     }
     pub fn lifecycle(
-        mut self,
-    ) -> impl Stream<Item = Result<BgpUpdateMessage, Result<BgpNotificationMessage, BgpError>>> + Send
-    {
+        &mut self,
+    ) -> impl TryStream<Ok = BgpUpdateMessage, Error = Result<BgpNotificationMessage, BgpError>>
+           + Unpin
+           + Send
+           + use<'_> {
         self.stop_keepalives = Some(self.start_keepalives());
-
-        async_stream::try_stream! {
-            loop {
-                let (msgtype, buf) = self.next_message().await.map_err(Err)?;
-                if msgtype == BgpMessageType::Keepalive {
-                    continue;
-                }
-                match msgtype {
-                    BgpMessageType::Open => {
-                        Err(Err(BgpError::static_str("Incorrect open message")))?;
-                    }
-                    BgpMessageType::Keepalive => {}
-                    BgpMessageType::Notification => {
-                        let mut msgnotification = BgpNotificationMessage::new();
-                        msgnotification.decode_from(&self.params, &buf[..]).map_err(Err)?;
-                        Err(Ok(msgnotification))?;
-                    }
-                    BgpMessageType::Update => {
-                        let mut msgupdate = BgpUpdateMessage::new();
-                        if let Err(e) = msgupdate.decode_from(&self.params, &buf[..]) {
-                            warn!("BGP update decode error: {:?}", e);
-                            warn!("{:x?}", &buf[..]);
-                            continue;
+        let params = self.params.clone();
+        Box::pin(
+            self.messages()
+                .map_err(Err)
+                .try_filter_map(move |(msgtype, buf)| {
+                    let params = params.clone();
+                    async move {
+                        if msgtype == BgpMessageType::Keepalive {
+                            return Ok(None);
                         }
-                        yield msgupdate;
+                        match msgtype {
+                            BgpMessageType::Open => {
+                                Err(Err(BgpError::static_str("Incorrect open message")))
+                            }
+                            BgpMessageType::Keepalive => Ok(None),
+                            BgpMessageType::Notification => {
+                                let mut msgnotification = BgpNotificationMessage::new();
+                                msgnotification
+                                    .decode_from(&params, &buf[..])
+                                    .map_err(Err)?;
+                                Err(Ok(msgnotification))
+                            }
+                            BgpMessageType::Update => {
+                                let mut msgupdate = BgpUpdateMessage::new();
+                                if let Err(e) = msgupdate.decode_from(&params, &buf[..]) {
+                                    warn!("BGP update decode error: {:?}", e);
+                                    warn!("{:x?}", &buf[..]);
+                                    return Ok(None);
+                                }
+
+                                Ok(Some(msgupdate))
+                            }
+                        }
                     }
-                }
-            }
-        }
+                }),
+        )
     }
 }
 impl Drop for BgpDumper {
