@@ -357,11 +357,15 @@ fn bgp_addrs_to_nets(
             .collect(),
         BgpAddrs::IPV4U(ref addrs) => addrs
             .iter()
-            .filter_map(|addr| bgpv4addr_to_ipnet(addr).map(|net| (RouteDistinguisher::Default, 0, net)))
+            .filter_map(|addr| {
+                bgpv4addr_to_ipnet(addr).map(|net| (RouteDistinguisher::Default, 0, net))
+            })
             .collect(),
         BgpAddrs::IPV6U(ref addrs) => addrs
             .iter()
-            .filter_map(|addr| bgpv6addr_to_ipnet(addr).map(|net| (RouteDistinguisher::Default, 0, net)))
+            .filter_map(|addr| {
+                bgpv6addr_to_ipnet(addr).map(|net| (RouteDistinguisher::Default, 0, net))
+            })
             .collect(),
         BgpAddrs::VPNV4U(ref addrs) => addrs
             .iter()
