@@ -4,10 +4,20 @@ use ipnet::IpNet;
 use nibbletree::Node;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::Weak;
+
+pub type Subscriber = dyn Fn(IpNet, u32, Action) + Send + Sync;
+
+#[derive(Clone, Debug)]
+pub enum Action {
+    Update(Arc<CompressedRouteAttrs>),
+    Withdraw,
+}
 
 #[derive(Clone)]
 pub struct InMemoryTable {
     pub table: Arc<Mutex<Node<IpNet, Vec<(PathId, Arc<CompressedRouteAttrs>)>>>>,
+    subscribers: Arc<Mutex<Vec<Weak<Subscriber>>>>,
     caches: Arc<Mutex<Caches>>,
 }
 
@@ -44,12 +54,26 @@ impl InMemoryTable {
     pub fn new(caches: Arc<Mutex<Caches>>) -> Self {
         Self {
             table: Default::default(),
+            subscribers: Default::default(),
             caches,
         }
     }
 
+    pub fn subscribe(&self, cb: Weak<Subscriber>) {
+        self.subscribers.lock().unwrap().push(cb);
+    }
+
     pub async fn update_route(&self, path_id: PathId, net: IpNet, route: RouteAttrs) {
         let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
+        for subscriber in self
+            .subscribers
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(Weak::upgrade)
+        {
+            (*subscriber)(net, path_id, Action::Update(compressed.clone()));
+        }
 
         let mut table = self.table.lock().unwrap();
 
@@ -70,6 +94,16 @@ impl InMemoryTable {
     }
 
     pub async fn withdraw_route(&self, path_id: PathId, net: IpNet) {
+        for subscriber in self
+            .subscribers
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(Weak::upgrade)
+        {
+            (*subscriber)(net, path_id, Action::Withdraw);
+        }
+
         let mut table = self.table.lock().unwrap();
 
         let is_empty = match table.exact_mut(&net) {
