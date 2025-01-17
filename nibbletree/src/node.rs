@@ -117,7 +117,7 @@ fn from_index(mut index: usize) -> Key {
     key
 }
 
-impl<T: Debug + Send + Sync> Node<T> {
+impl<T: Send + Sync> Node<T> {
     fn children(&self) -> impl Iterator<Item = (Key, &Node<T>)> {
         let children_iter = self.children.iter().flat_map(|children| children.iter());
         self.bitmap.children_bits().iter_ones().map(|x| x.view_bits::<Lsb0>().iter().take(RESULTS_BITS_END_NODE).collect()).zip(children_iter)
