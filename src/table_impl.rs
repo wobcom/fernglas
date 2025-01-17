@@ -63,7 +63,7 @@ impl InMemoryTable {
         self.subscribers.lock().unwrap().push(cb);
     }
 
-    pub async fn update_route(&self, path_id: PathId, net: IpNet, route: RouteAttrs) {
+    pub fn update_route(&self, path_id: PathId, net: IpNet, route: RouteAttrs) {
         let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
         for subscriber in self
             .subscribers
@@ -93,7 +93,7 @@ impl InMemoryTable {
         }
     }
 
-    pub async fn withdraw_route(&self, path_id: PathId, net: IpNet) {
+    pub fn withdraw_route(&self, path_id: PathId, net: IpNet) {
         for subscriber in self
             .subscribers
             .lock()
