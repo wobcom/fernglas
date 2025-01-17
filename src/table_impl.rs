@@ -52,7 +52,7 @@ impl<T> Default for InMemoryTableState<T> {
 pub struct InMemoryTable<T: Compressable = RouteAttrs> {
     pub state: Arc<Mutex<InMemoryTableState<T::Compressed>>>,
     subscribers: Arc<Mutex<Vec<Weak<Subscriber<T::Compressed>>>>>,
-    caches: Arc<Mutex<Caches>>,
+    pub caches: Arc<Mutex<Caches>>,
 }
 
 pub trait NodeExt {
