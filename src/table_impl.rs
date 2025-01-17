@@ -6,18 +6,40 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
 
-pub type Subscriber = dyn Fn(IpNet, u32, Action) + Send + Sync;
+pub type Subscriber<T> = dyn Fn(IpNet, u32, Action<T>) + Send + Sync;
 
-#[derive(Clone, Debug)]
-pub enum Action {
-    Update(Arc<CompressedRouteAttrs>),
+#[derive(Clone, Debug, PartialEq)]
+pub enum Action<T> {
+    Update(T),
     Withdraw,
 }
 
+pub trait Compressable {
+    type Compressed;
+    fn compress(self, caches: &Arc<Mutex<Caches>>) -> Self::Compressed;
+}
+
+impl Compressable for RouteAttrs {
+    type Compressed = Arc<CompressedRouteAttrs>;
+    fn compress(self, caches: &Arc<Mutex<Caches>>) -> Self::Compressed {
+        caches.lock().unwrap().compress_route_attrs(self)
+    }
+}
+
+impl<T: Compressable> Compressable for Action<T> {
+    type Compressed = Action<T::Compressed>;
+    fn compress(self, caches: &Arc<Mutex<Caches>>) -> Self::Compressed {
+        match self {
+            Action::Withdraw => Action::Withdraw,
+            Action::Update(attrs) => Action::Update(attrs.compress(caches)),
+        }
+    }
+}
+
 #[derive(Clone)]
-pub struct InMemoryTable {
-    pub table: Arc<Mutex<Node<IpNet, Vec<(PathId, Arc<CompressedRouteAttrs>)>>>>,
-    subscribers: Arc<Mutex<Vec<Weak<Subscriber>>>>,
+pub struct InMemoryTable<T: Compressable = RouteAttrs> {
+    pub table: Arc<Mutex<Node<IpNet, Vec<(PathId, T::Compressed)>>>>,
+    subscribers: Arc<Mutex<Vec<Weak<Subscriber<T::Compressed>>>>>,
     caches: Arc<Mutex<Caches>>,
 }
 
@@ -50,7 +72,7 @@ impl NodeExt for Node<IpNet, Vec<(PathId, Arc<CompressedRouteAttrs>)>> {
     }
 }
 
-impl InMemoryTable {
+impl<C: Clone + Send + Sync, T: Compressable<Compressed = C>> InMemoryTable<T> {
     pub fn new(caches: Arc<Mutex<Caches>>) -> Self {
         Self {
             table: Default::default(),
@@ -59,16 +81,11 @@ impl InMemoryTable {
         }
     }
 
-    pub fn subscribe(&self, cb: Weak<Subscriber>) {
+    pub fn subscribe(&self, cb: Weak<Subscriber<C>>) {
         self.subscribers.lock().unwrap().push(cb);
     }
 
-    pub fn update_route_compressed(
-        &self,
-        path_id: PathId,
-        net: IpNet,
-        compressed: Arc<CompressedRouteAttrs>,
-    ) {
+    pub fn update_route_compressed(&self, path_id: PathId, net: IpNet, compressed: C) {
         for subscriber in self
             .subscribers
             .lock()
@@ -96,8 +113,9 @@ impl InMemoryTable {
             table.insert(&net, insert);
         }
     }
-    pub fn update_route(&self, path_id: PathId, net: IpNet, route: RouteAttrs) {
-        let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
+
+    pub fn update_route(&self, path_id: PathId, net: IpNet, route: T) {
+        let compressed = route.compress(&self.caches);
         self.update_route_compressed(path_id, net, compressed)
     }
 
