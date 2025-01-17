@@ -107,13 +107,13 @@ impl Store for InMemoryStore {
         route: RouteAttrs,
     ) {
         let table = self.get_table(table);
-        table.update_route(path_id, net, route).await;
+        table.update_route(path_id, net, route);
     }
 
     #[autometrics::autometrics]
     async fn withdraw_route(&self, path_id: PathId, net: IpNet, table: TableSelector) {
         let table = self.get_table(table);
-        table.withdraw_route(path_id, net).await;
+        table.withdraw_route(path_id, net);
     }
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
