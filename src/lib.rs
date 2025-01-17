@@ -8,6 +8,7 @@ pub mod route_distinguisher;
 pub mod store;
 pub mod store_impl;
 pub mod table_impl;
+pub mod table_stream;
 
 use serde::Deserialize;
 use std::collections::HashMap;
