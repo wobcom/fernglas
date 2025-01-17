@@ -63,8 +63,12 @@ impl InMemoryTable {
         self.subscribers.lock().unwrap().push(cb);
     }
 
-    pub fn update_route(&self, path_id: PathId, net: IpNet, route: RouteAttrs) {
-        let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
+    pub fn update_route_compressed(
+        &self,
+        path_id: PathId,
+        net: IpNet,
+        compressed: Arc<CompressedRouteAttrs>,
+    ) {
         for subscriber in self
             .subscribers
             .lock()
@@ -91,6 +95,10 @@ impl InMemoryTable {
         if let Some(insert) = new_insert {
             table.insert(&net, insert);
         }
+    }
+    pub fn update_route(&self, path_id: PathId, net: IpNet, route: RouteAttrs) {
+        let compressed = self.caches.lock().unwrap().compress_route_attrs(route);
+        self.update_route_compressed(path_id, net, compressed)
     }
 
     pub fn withdraw_route(&self, path_id: PathId, net: IpNet) {
