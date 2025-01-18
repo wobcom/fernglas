@@ -1,8 +1,7 @@
-use std::net::IpAddr;
 use nibbletree::Node;
+use std::net::IpAddr;
 
 fn main() {
-
     let mut node = Node::default();
 
     let addrs: Vec<((IpAddr, usize), &str)> = vec![
@@ -35,7 +34,7 @@ fn main() {
 
         //(("192.0.2.1".parse().unwrap(), 32), "32"),
     ];
-    for (k,v) in &addrs {
+    for (k, v) in &addrs {
         eprintln!("{:?} {:?}", k, v);
     }
 
@@ -43,15 +42,32 @@ fn main() {
         node.insert(&key, val);
     }
 
-    println!("! {:?}", node.longest_match(&("172.15.0.1".parse().unwrap(), 32)));
-    println!("! {:?}", node.longest_match(&("10.0.0.1".parse().unwrap(), 32)));
-    println!("! {:?}", node.longest_match(&("172.16.0.1".parse().unwrap(), 32)));
-    println!("! {:?}", node.longest_match(&("192.168.0.1".parse().unwrap(), 32)));
-    println!("! {:?}", node.longest_match(&("192.168.1.0".parse().unwrap(), 24)));
+    println!(
+        "! {:?}",
+        node.longest_match(&("172.15.0.1".parse().unwrap(), 32))
+    );
+    println!(
+        "! {:?}",
+        node.longest_match(&("10.0.0.1".parse().unwrap(), 32))
+    );
+    println!(
+        "! {:?}",
+        node.longest_match(&("172.16.0.1".parse().unwrap(), 32))
+    );
+    println!(
+        "! {:?}",
+        node.longest_match(&("192.168.0.1".parse().unwrap(), 32))
+    );
+    println!(
+        "! {:?}",
+        node.longest_match(&("192.168.1.0".parse().unwrap(), 24))
+    );
 
-    let results = node.or_longer(&("128.0.0.0".parse().unwrap(), 1)).collect::<Vec<_>>();
+    let results = node
+        .or_longer(&("128.0.0.0".parse().unwrap(), 1))
+        .collect::<Vec<_>>();
 
-    for (k,v) in results {
+    for (k, v) in results {
         println!("{:?} {:?}", k, v);
     }
 }

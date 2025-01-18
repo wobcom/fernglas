@@ -1,9 +1,9 @@
+use bitvec::prelude::*;
+use nibbletree::{Key, Node};
+use rand::prelude::*;
 use rand_xoshiro::Xoshiro256StarStar;
 use rstest::rstest;
 use rstest_reuse::{self, *};
-use rand::prelude::*;
-use bitvec::prelude::*;
-use nibbletree::{Key, Node};
 
 fn rand_key(max_key_len: usize, rng: &mut impl Rng) -> Key {
     let key_len = rng.gen_range(0..max_key_len);
@@ -12,7 +12,11 @@ fn rand_key(max_key_len: usize, rng: &mut impl Rng) -> Key {
     key
 }
 
-fn random_tree(len: usize, max_key_len: usize, seed: u8) -> (Vec<(Key, u64)>, Node<Key, u64>, Vec<Key>) {
+fn random_tree(
+    len: usize,
+    max_key_len: usize,
+    seed: u8,
+) -> (Vec<(Key, u64)>, Node<Key, u64>, Vec<Key>) {
     let mut rng = Xoshiro256StarStar::from_seed([seed; 32]);
     let mut data = (0..len)
         .map(|_| (rand_key(max_key_len, &mut rng), rng.gen()))
@@ -38,13 +42,11 @@ fn random_tree(len: usize, max_key_len: usize, seed: u8) -> (Vec<(Key, u64)>, No
 #[template]
 #[rstest]
 fn random_tree_template(
-    #[values(1, 10, 100, 1000)]
-    len: usize,
-    #[values(4, 32, 128)]
-    max_key_len: usize,
-    #[values(1, 2, 3)]
-    seed: u8
-) {}
+    #[values(1, 10, 100, 1000)] len: usize,
+    #[values(4, 32, 128)] max_key_len: usize,
+    #[values(1, 2, 3)] seed: u8,
+) {
+}
 
 #[apply(random_tree_template)]
 fn iter(len: usize, max_key_len: usize, seed: u8) {
@@ -104,7 +106,10 @@ fn remove(len: usize, max_key_len: usize, seed: u8) {
     let (mut data, mut tree, _) = random_tree(len, max_key_len, seed);
 
     let to_be_removed = data.split_off(data.len() / 2);
-    let removed = to_be_removed.iter().map(|(key, _)| (key.clone(), tree.remove(&key).unwrap())).collect::<Vec<_>>();
+    let removed = to_be_removed
+        .iter()
+        .map(|(key, _)| (key.clone(), tree.remove(&key).unwrap()))
+        .collect::<Vec<_>>();
     assert_eq!(to_be_removed, removed);
 
     data.sort();
@@ -123,10 +128,7 @@ fn exact(len: usize, max_key_len: usize, seed: u8) {
         assert_eq!(should_match, is_match);
     }
     for key in test_keys {
-        let should_match = data
-            .iter()
-            .find(|(k, _)| *k == key)
-            .map(|(_, v)| v);
+        let should_match = data.iter().find(|(k, _)| *k == key).map(|(_, v)| v);
         let is_match = tree.exact(&key);
         assert_eq!(should_match, is_match);
     }
@@ -162,9 +164,7 @@ fn or_longer(len: usize, max_key_len: usize, seed: u8) {
             .filter(|(k, _)| k.starts_with(&key))
             .map(|(k, v)| (k.clone(), v))
             .collect::<Vec<_>>();
-        let mut is_match = tree
-            .or_longer(&key)
-            .collect::<Vec<_>>();
+        let mut is_match = tree.or_longer(&key).collect::<Vec<_>>();
         should_match.sort();
         is_match.sort();
         assert_eq!(should_match, is_match);
@@ -181,9 +181,7 @@ fn matches(len: usize, max_key_len: usize, seed: u8) {
             .filter(|(k, _)| key.starts_with(k))
             .map(|(k, v)| (k.clone(), v))
             .collect::<Vec<_>>();
-        let mut is_match = tree
-            .matches(&key)
-            .collect::<Vec<_>>();
+        let mut is_match = tree.matches(&key).collect::<Vec<_>>();
         should_match.sort();
         is_match.sort();
         assert_eq!(should_match, is_match);

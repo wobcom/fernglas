@@ -1,13 +1,16 @@
 use super::node::Node;
 use super::{Key, KeyRef};
-use std::marker::PhantomData;
-use std::fmt::Debug;
-use std::net::{Ipv4Addr, Ipv6Addr, IpAddr};
 use bitvec::prelude::*;
+use std::fmt::Debug;
+use std::marker::PhantomData;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 pub trait FromKey {
     fn from_key(key: KeyRef) -> Self;
-    fn from_key_owned(key: Key) -> Self where Self: Sized {
+    fn from_key_owned(key: Key) -> Self
+    where
+        Self: Sized,
+    {
         Self::from_key(key.as_bitslice())
     }
 }
@@ -206,12 +209,10 @@ impl<K: FromKey + ToKey, T: Send + Sync> NodeWithKey<K, T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (K, &T)> + '_ {
-        self.node.iter()
-            .map(|(k, v)| (K::from_key_owned(k), v))
+        self.node.iter().map(|(k, v)| (K::from_key_owned(k), v))
     }
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut T)> + '_ {
-        self.node.iter_mut()
-            .map(|(k, v)| (K::from_key_owned(k), v))
+        self.node.iter_mut().map(|(k, v)| (K::from_key_owned(k), v))
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> + '_ {
@@ -222,8 +223,7 @@ impl<K: FromKey + ToKey, T: Send + Sync> NodeWithKey<K, T> {
     }
 
     pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
-        self.node.keys()
-            .map(K::from_key_owned)
+        self.node.keys().map(K::from_key_owned)
     }
     pub fn exact(&self, key: &K) -> Option<&T> {
         self.node.exact(&key.to_key())
@@ -233,17 +233,20 @@ impl<K: FromKey + ToKey, T: Send + Sync> NodeWithKey<K, T> {
     }
 
     pub fn longest_match(&self, key: &K) -> Option<(K, &T)> {
-        self.node.longest_match(&key.to_key())
+        self.node
+            .longest_match(&key.to_key())
             .map(|(k, v)| (K::from_key_owned(k), v))
     }
 
     pub fn or_longer(&self, key: &K) -> impl Iterator<Item = (K, &T)> + '_ {
-        self.node.or_longer(key.to_key())
+        self.node
+            .or_longer(key.to_key())
             .map(|(k, v)| (K::from_key_owned(k), v))
     }
 
     pub fn matches(&self, key: &K) -> impl Iterator<Item = (K, &T)> + '_ {
-        self.node.matches(key.to_key())
+        self.node
+            .matches(key.to_key())
             .map(|(k, v)| (K::from_key_owned(k), v))
     }
 }
