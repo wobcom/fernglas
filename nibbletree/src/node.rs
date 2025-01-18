@@ -176,7 +176,7 @@ impl<T: Send + Sync> Node<T> {
     pub fn insert(&mut self, key: KeyRef, value: T) -> Option<T> {
         if key.len() <= self.bitmap.results_capacity() {
             // capacity is suffcient, insert into local node
-            let index = to_index(&key);
+            let index = to_index(key);
 
             let results = self.results.get_or_insert(Default::default());
             let vec_index = self.bitmap.results_bits()[..index].count_ones();
@@ -270,7 +270,7 @@ impl<T: Send + Sync> Node<T> {
         results_iter.chain(children_iter)
     }
 
-    fn keys_with_prefix<'a>(&'a self, prefix: Key) -> impl Iterator<Item = Key> + Send + Sync + 'a {
+    fn keys_with_prefix(&self, prefix: Key) -> impl Iterator<Item = Key> + Send + Sync + '_ {
         let results_keys_iter = self.bitmap.results_keys_with_prefix(prefix.clone());
         let children_keys_iter = self.children()
             .flat_map(move |(child_key, child)| {
