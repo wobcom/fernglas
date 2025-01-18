@@ -1,6 +1,9 @@
 use bitvec::prelude::*;
+use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::ops::{Index, IndexMut};
+use std::sync::LazyLock;
+use std::sync::Mutex;
 use thin_vec::ThinVec;
 
 pub type Key = BitVec<usize, Lsb0>;
@@ -35,6 +38,25 @@ impl Debug for Bitmap {
                 &format!("{}", &self.bitmap.view_bits::<Lsb0>()[CHILDREN_START..]),
             )
             .finish()
+    }
+}
+
+fn all_possible_keys(max_bits: usize) -> Box<dyn Iterator<Item = Key>> {
+    if max_bits == 0 {
+        Box::new([Key::new()].into_iter())
+    } else {
+        Box::new(all_possible_keys(max_bits - 1).flat_map(move |end| {
+            let mut res = vec![end.clone()];
+            if end.len() == max_bits - 1 {
+                res.extend([false, true].into_iter().map(move |begin_value| {
+                    let mut key = Key::new();
+                    key.extend(end.clone());
+                    key.push(begin_value);
+                    key
+                }));
+            }
+            res
+        }))
     }
 }
 
@@ -81,15 +103,38 @@ impl Bitmap {
         self.bitmap.view_bits::<Lsb0>().index(1..end)
     }
 
-    fn results_keys_with_prefix(&self, prefix: Key) -> impl Iterator<Item = Key> + '_ {
-        self.results_bits()
-            .iter_ones()
-            .map(from_index)
-            .map(move |result_key| {
-                let mut key = prefix.clone();
-                key.extend(result_key);
-                key
+    fn to_index(&self, key: KeyRef) -> usize {
+        let results_capacity = self.results_capacity();
+        key.iter()
+            .enumerate()
+            .map(|(pos, i)| {
+                let val = i
+                    .then(|| 2_usize.pow((results_capacity - pos) as u32) - 1)
+                    .unwrap_or(0);
+                val + 1
             })
+            .sum()
+    }
+
+    fn from_index(&self, index: usize) -> Key {
+        let results_capacity = self.results_capacity();
+        static FROM_INDEX_LOOKUP_TABLES: LazyLock<Mutex<HashMap<usize, Vec<Key>>>> =
+            LazyLock::new(Default::default);
+        let mut lookup_tables = FROM_INDEX_LOOKUP_TABLES.lock().unwrap();
+        let lookup_table = lookup_tables.entry(results_capacity).or_insert_with(|| {
+            let mut results: Vec<Option<Key>> = (1..2_usize.pow((results_capacity + 1) as u32))
+                .map(|_| None)
+                .collect();
+            for key in all_possible_keys(results_capacity) {
+                let index = self.to_index(&key);
+                if results[index].is_some() {
+                    panic!()
+                }
+                results[index] = Some(key);
+            }
+            results.into_iter().map(|x| x.unwrap()).collect()
+        });
+        lookup_table[index].clone()
     }
 }
 
@@ -112,77 +157,151 @@ impl<T> Default for Node<T> {
     }
 }
 
-fn children_mut<'a, T>(
-    bitmap: &'a Bitmap,
-    children: &'a mut Option<ThinVec<Node<T>>>,
-) -> impl Iterator<Item = (Key, &'a mut Node<T>)> {
-    let children_iter = children.iter_mut().flat_map(|children| children.iter_mut());
-    bitmap
-        .children_bits()
-        .iter_ones()
-        .map(|x| {
-            x.view_bits::<Lsb0>()
-                .iter()
-                .take(RESULTS_BITS_END_NODE)
-                .collect()
-        })
-        .zip(children_iter)
-}
-fn results_mut<'a, T>(
+fn results_and_children_mut<'a, T>(
     bitmap: &'a Bitmap,
     results: &'a mut Option<ThinVec<T>>,
-) -> impl Iterator<Item = (Key, &'a mut T)> {
-    let results_iter = results.iter_mut().flat_map(|results| results.iter_mut());
-    bitmap
-        .results_bits()
-        .iter_ones()
-        .map(from_index)
-        .zip(results_iter)
+    children: &'a mut Option<ThinVec<Node<T>>>,
+) -> impl Iterator<Item = (Key, ResultOrChildMut<'a, T>)> {
+    let mut children_values_iter = children.iter_mut().flat_map(|children| children.iter_mut());
+    let mut children_iter = bitmap
+        .children_bits()
+        .iter()
+        .map(move |bit| (*bit).then(|| children_values_iter.next().unwrap()));
+
+    let mut results_iter = results.iter_mut().flat_map(|results| results.iter_mut());
+    (0..2_usize.pow((bitmap.results_capacity() + 1) as u32) - 1).flat_map(move |i| {
+        let key = bitmap.from_index(i);
+        let maybe_result = bitmap.results_bits()[i].then(|| {
+            (
+                key.clone(),
+                ResultOrChildMut::Result(results_iter.next().unwrap()),
+            )
+        });
+        let maybe_children = (!bitmap.is_end_node() && key.len() == bitmap.results_capacity())
+            .then(|| {
+                [false, true]
+                    .into_iter()
+                    .rev()
+                    .map(move |begin_value| {
+                        let mut new_key = Key::new();
+                        new_key.extend(key.clone());
+                        new_key.push(begin_value);
+                        new_key.into_iter().collect()
+                    })
+                    .zip(
+                        [children_iter.next().unwrap(), children_iter.next().unwrap()]
+                            .into_iter()
+                            .rev(),
+                    )
+                    .filter_map(|(key, child)| {
+                        child.map(|child| (key, ResultOrChildMut::Child(child)))
+                    })
+                    .rev()
+            })
+            .into_iter()
+            .flatten();
+        maybe_result.into_iter().chain(maybe_children)
+    })
 }
 
-fn to_index(key: KeyRef) -> usize {
-    let leading_one = 2usize.pow(key.len() as u32);
-    let net_bits: usize = if key.is_empty() { 0 } else { key.load_le() };
-    (leading_one + net_bits) - 1
+enum ResultOrChild<'a, T> {
+    Result(&'a T),
+    Child(&'a Node<T>),
 }
 
-fn from_index(mut index: usize) -> Key {
-    index += 1;
-    let prefix_len = (std::mem::size_of::<usize>() as u32 * 8) - index.leading_zeros() - 1;
-    let mut key = Key::new();
-    key.extend(index.view_bits::<Lsb0>().iter().take(prefix_len as usize));
-    key
+enum ResultOrChildMut<'a, T> {
+    Result(&'a mut T),
+    Child(&'a mut Node<T>),
 }
 
 impl<T: Send + Sync> Node<T> {
-    fn children(&self) -> impl Iterator<Item = (Key, &Node<T>)> {
-        let children_iter = self.children.iter().flat_map(|children| children.iter());
-        self.bitmap
+    fn results_and_children(&self) -> impl Iterator<Item = (Key, ResultOrChild<T>)> {
+        let mut children_values_iter = self.children.iter().flat_map(|children| children.iter());
+        let mut children_iter = self
+            .bitmap
             .children_bits()
-            .iter_ones()
-            .map(|x| {
-                x.view_bits::<Lsb0>()
-                    .iter()
-                    .take(RESULTS_BITS_END_NODE)
-                    .collect()
+            .iter()
+            .map(move |bit| (*bit).then(|| children_values_iter.next().unwrap()));
+
+        let mut results_iter = self.results.iter().flat_map(|results| results.iter());
+        (0..2_usize.pow((self.bitmap.results_capacity() + 1) as u32) - 1).flat_map(move |i| {
+            let key = self.bitmap.from_index(i);
+            let maybe_result = self.bitmap.results_bits()[i].then(|| {
+                (
+                    key.clone(),
+                    ResultOrChild::Result(results_iter.next().unwrap()),
+                )
+            });
+            let maybe_children = (!self.bitmap.is_end_node()
+                && key.len() == self.bitmap.results_capacity())
+            .then(|| {
+                [false, true]
+                    .into_iter()
+                    .rev()
+                    .map(move |begin_value| {
+                        let mut new_key = Key::new();
+                        new_key.extend(key.clone());
+                        new_key.push(begin_value);
+                        new_key.into_iter().collect()
+                    })
+                    .zip(
+                        [children_iter.next().unwrap(), children_iter.next().unwrap()]
+                            .into_iter()
+                            .rev(),
+                    )
+                    .filter_map(|(key, child)| {
+                        child.map(|child| (key, ResultOrChild::Child(child)))
+                    })
+                    .rev()
             })
-            .zip(children_iter)
+            .into_iter()
+            .flatten();
+            maybe_result.into_iter().chain(maybe_children)
+        })
     }
 
-    fn results(&self) -> impl Iterator<Item = (Key, &T)> {
-        let results_iter = self.results.iter().flat_map(|results| results.iter());
-        self.bitmap
-            .results_bits()
-            .iter_ones()
-            .map(from_index)
-            .zip(results_iter)
+    fn results_keys_and_children(&self) -> impl Iterator<Item = (Key, Option<&Node<T>>)> {
+        let mut children_values_iter = self.children.iter().flat_map(|children| children.iter());
+        let mut children_iter = self
+            .bitmap
+            .children_bits()
+            .iter()
+            .map(move |bit| (*bit).then(|| children_values_iter.next().unwrap()));
+
+        (0..2_usize.pow((self.bitmap.results_capacity() + 1) as u32) - 1).flat_map(move |i| {
+            let key = self.bitmap.from_index(i);
+            let maybe_result = self.bitmap.results_bits()[i].then(|| (key.clone(), None));
+            let maybe_children = (!self.bitmap.is_end_node()
+                && key.len() == self.bitmap.results_capacity())
+            .then(|| {
+                [false, true]
+                    .into_iter()
+                    .rev()
+                    .map(move |begin_value| {
+                        let mut new_key = Key::new();
+                        new_key.extend(key.clone());
+                        new_key.push(begin_value);
+                        new_key.into_iter().collect()
+                    })
+                    .zip(
+                        [children_iter.next().unwrap(), children_iter.next().unwrap()]
+                            .into_iter()
+                            .rev(),
+                    )
+                    .filter(|(_, y)| y.is_some())
+                    .rev()
+            })
+            .into_iter()
+            .flatten();
+            maybe_result.into_iter().chain(maybe_children)
+        })
     }
 
     fn get_child(&self, key: KeyRef) -> Option<&Node<T>> {
         if self.bitmap.is_end_node() {
             return None;
         }
-        let nibble: usize = key.load_le();
+        let nibble: usize = key.into_iter().rev().collect::<Key>().load_le();
         self.bitmap.children_bits()[nibble].then(|| {
             let vec_index = self.bitmap.children_bits()[..nibble].count_ones();
             &self.children.as_ref().unwrap()[vec_index]
@@ -192,7 +311,8 @@ impl<T: Send + Sync> Node<T> {
         if self.bitmap.is_end_node() {
             return None;
         }
-        let nibble: usize = key.load_le();
+
+        let nibble: usize = key.into_iter().rev().collect::<Key>().load_le();
         self.bitmap.children_bits()[nibble].then(|| {
             let vec_index = self.bitmap.children_bits()[..nibble].count_ones();
             &mut self.children.as_mut().unwrap()[vec_index]
@@ -213,7 +333,7 @@ impl<T: Send + Sync> Node<T> {
             .bitmap
             .results_bits()
             .iter_ones()
-            .map(from_index)
+            .map(|x| self.bitmap.from_index(x))
             .zip(results_iter)
             .collect::<Vec<_>>();
 
@@ -228,7 +348,7 @@ impl<T: Send + Sync> Node<T> {
         self.convert_to_normal();
 
         {
-            let nibble: usize = key.load_le();
+            let nibble: usize = key.into_iter().rev().collect::<Key>().load_le();
             if !self.bitmap.children_bits()[nibble] {
                 self.bitmap.children_bits_mut().set(nibble, true);
                 let children = self.children.get_or_insert(Default::default());
@@ -242,7 +362,7 @@ impl<T: Send + Sync> Node<T> {
     pub fn insert(&mut self, key: KeyRef, value: T) -> Option<T> {
         if key.len() <= self.bitmap.results_capacity() {
             // capacity is suffcient, insert into local node
-            let index = to_index(key);
+            let index = self.bitmap.to_index(key);
 
             let results = self.results.get_or_insert(Default::default());
             let vec_index = self.bitmap.results_bits()[..index].count_ones();
@@ -262,7 +382,7 @@ impl<T: Send + Sync> Node<T> {
     }
     pub fn remove(&mut self, key: KeyRef) -> Option<T> {
         if key.len() <= self.bitmap.results_capacity() {
-            let index = to_index(key);
+            let index = self.bitmap.to_index(key);
             self.bitmap.results_bits()[index].then(|| {
                 self.bitmap.results_bits_mut().set(index, false);
                 let results = self.results.get_or_insert(Default::default());
@@ -277,44 +397,56 @@ impl<T: Send + Sync> Node<T> {
     }
 
     fn iter_with_prefix(&self, prefix: Key) -> impl Iterator<Item = (Key, &T)> + Send + Sync + '_ {
-        let results_iter = {
-            let prefix = prefix.clone();
-            self.results().map(move |(result_key, val)| {
-                let mut key = prefix.clone();
-                key.extend(result_key);
-                (key, val)
+        self.results_and_children()
+            .flat_map(move |(child_or_result_key, child_or_result)| {
+                let (result, from_children): (
+                    _,
+                    Option<Box<dyn Iterator<Item = (Key, &T)> + Send + Sync>>,
+                ) = match child_or_result {
+                    ResultOrChild::Result(r) => (Some((child_or_result_key, r)), None),
+                    ResultOrChild::Child(child) => (
+                        None,
+                        Some(Box::new(child.iter_with_prefix(child_or_result_key))),
+                    ),
+                };
+                let prefix = prefix.clone();
+                result
+                    .into_iter()
+                    .chain(from_children.into_iter().flatten())
+                    .map(move |(child_or_result_key, result)| {
+                        let mut key = prefix.clone();
+                        key.extend(child_or_result_key);
+                        (key, result)
+                    })
             })
-        };
-        let children_iter = self.children().flat_map(move |(child_key, child)| {
-            let mut key = prefix.clone();
-            key.extend(child_key);
-            child.iter_with_prefix(key)
-        });
-        let children_iter: Box<dyn Iterator<Item = (Key, &T)> + Send + Sync + '_> =
-            Box::new(children_iter);
-        results_iter.chain(children_iter)
     }
     fn iter_mut_with_prefix(
         &mut self,
         prefix: Key,
     ) -> impl Iterator<Item = (Key, &mut T)> + Send + Sync + '_ {
-        let results_iter = {
-            let prefix = prefix.clone();
-            results_mut(&self.bitmap, &mut self.results).map(move |(result_key, val)| {
-                let mut key = prefix.clone();
-                key.extend(result_key);
-                (key, val)
-            })
-        };
-        let children_iter =
-            children_mut(&self.bitmap, &mut self.children).flat_map(move |(child_key, child)| {
-                let mut key = prefix.clone();
-                key.extend(child_key);
-                child.iter_mut_with_prefix(key)
-            });
-        let children_iter: Box<dyn Iterator<Item = (Key, &mut T)> + Send + Sync + '_> =
-            Box::new(children_iter);
-        results_iter.chain(children_iter)
+        results_and_children_mut(&self.bitmap, &mut self.results, &mut self.children).flat_map(
+            move |(child_or_result_key, child_or_result)| {
+                let (result, from_children): (
+                    _,
+                    Option<Box<dyn Iterator<Item = (Key, &mut T)> + Send + Sync>>,
+                ) = match child_or_result {
+                    ResultOrChildMut::Result(r) => (Some((child_or_result_key, r)), None),
+                    ResultOrChildMut::Child(child) => (
+                        None,
+                        Some(Box::new(child.iter_mut_with_prefix(child_or_result_key))),
+                    ),
+                };
+                let prefix = prefix.clone();
+                result
+                    .into_iter()
+                    .chain(from_children.into_iter().flatten())
+                    .map(move |(child_or_result_key, result)| {
+                        let mut key = prefix.clone();
+                        key.extend(child_or_result_key);
+                        (key, result)
+                    })
+            },
+        )
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (Key, &T)> + '_ {
@@ -348,15 +480,28 @@ impl<T: Send + Sync> Node<T> {
     }
 
     fn keys_with_prefix(&self, prefix: Key) -> impl Iterator<Item = Key> + Send + Sync + '_ {
-        let results_keys_iter = self.bitmap.results_keys_with_prefix(prefix.clone());
-        let children_keys_iter = self.children().flat_map(move |(child_key, child)| {
-            let mut key = prefix.clone();
-            key.extend(child_key);
-            child.keys_with_prefix(key)
-        });
-        let children_keys_iter: Box<dyn Iterator<Item = Key> + Send + Sync + '_> =
-            Box::new(children_keys_iter);
-        results_keys_iter.chain(children_keys_iter)
+        self.results_keys_and_children()
+            .flat_map(move |(child_or_result_key, child)| {
+                let (result_key, children_keys): (
+                    _,
+                    Option<Box<dyn Iterator<Item = Key> + Send + Sync>>,
+                ) = match child {
+                    None => (Some(child_or_result_key), None),
+                    Some(child) => (
+                        None,
+                        Some(Box::new(child.keys_with_prefix(child_or_result_key))),
+                    ),
+                };
+                let prefix = prefix.clone();
+                result_key
+                    .into_iter()
+                    .chain(children_keys.into_iter().flatten())
+                    .map(move |child_or_result_key| {
+                        let mut key = prefix.clone();
+                        key.extend(child_or_result_key);
+                        key
+                    })
+            })
     }
 
     pub fn keys(&self) -> impl Iterator<Item = Key> + '_ {
@@ -365,7 +510,7 @@ impl<T: Send + Sync> Node<T> {
 
     pub fn exact(&self, key: KeyRef) -> Option<&T> {
         if key.len() <= self.bitmap.results_capacity() {
-            let index = to_index(key);
+            let index = self.bitmap.to_index(key);
             self.bitmap.results_bits()[index].then(|| {
                 let vec_index = self.bitmap.results_bits()[..index].count_ones();
                 &self.results.as_ref().unwrap()[vec_index]
@@ -377,7 +522,7 @@ impl<T: Send + Sync> Node<T> {
     }
     pub fn exact_mut(&mut self, key: KeyRef) -> Option<&mut T> {
         if key.len() <= self.bitmap.results_capacity() {
-            let index = to_index(key);
+            let index = self.bitmap.to_index(key);
             self.bitmap.results_bits()[index].then(|| {
                 let vec_index = self.bitmap.results_bits()[..index].count_ones();
                 &mut self.results.as_mut().unwrap()[vec_index]
@@ -428,33 +573,36 @@ impl<T: Send + Sync> Node<T> {
             let remaining = key.split_off(RESULTS_BITS_END_NODE);
             prefix.extend(&key);
             if let Some(child) = self.get_child(&key) {
-                child.or_longer_with_prefix(prefix, remaining)
+                Box::new(child.or_longer_with_prefix(prefix, remaining))
             } else {
                 Box::new(std::iter::empty())
             }
         } else {
-            let results_iter = {
-                let prefix = prefix.clone();
-                let key = key.clone();
-                self.results()
-                    .filter(move |(result_key, _)| result_key.starts_with(&key))
-                    .map(move |(result_key, val)| {
-                        let mut key = prefix.clone();
-                        key.extend(result_key);
-                        (key, val)
-                    })
-            };
-            let children_iter = self
-                .children()
-                .filter(move |(child_key, _)| child_key.starts_with(&key))
-                .flat_map(move |(child_key, child)| {
-                    let mut key = prefix.clone();
-                    key.extend(child_key);
-                    child.iter_with_prefix(key)
-                });
-            let children_iter: Box<dyn Iterator<Item = (Key, &T)> + Send + Sync + '_> =
-                Box::new(children_iter);
-            Box::new(results_iter.chain(children_iter))
+            Box::new(
+                self.results_and_children()
+                    .filter(move |(child_or_result_key, _)| child_or_result_key.starts_with(&key))
+                    .flat_map(move |(child_or_result_key, child_or_result)| {
+                        let (result, from_children): (
+                            _,
+                            Option<Box<dyn Iterator<Item = (Key, &T)> + Send + Sync>>,
+                        ) = match child_or_result {
+                            ResultOrChild::Result(r) => (Some((child_or_result_key, r)), None),
+                            ResultOrChild::Child(child) => (
+                                None,
+                                Some(Box::new(child.iter_with_prefix(child_or_result_key))),
+                            ),
+                        };
+                        let prefix = prefix.clone();
+                        result
+                            .into_iter()
+                            .chain(from_children.into_iter().flatten())
+                            .map(move |(child_or_result_key, result)| {
+                                let mut key = prefix.clone();
+                                key.extend(child_or_result_key);
+                                (key, result)
+                            })
+                    }),
+            )
         }
     }
     pub fn or_longer(&self, key: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
@@ -466,32 +614,37 @@ impl<T: Send + Sync> Node<T> {
         prefix: Key,
         mut key: Key,
     ) -> impl Iterator<Item = (Key, &T)> + Send + Sync + '_ {
-        let results_iter = {
-            let prefix = prefix.clone();
-            let key = key.clone();
-            self.results()
-                .filter(move |(result_key, _)| key.starts_with(result_key))
-                .map(move |(result_key, val)| {
-                    let mut key = prefix.clone();
-                    key.extend(result_key);
-                    (key, val)
-                })
-        };
-        let children_iter = {
-            let key = key.clone();
-            self.children()
-                .filter(move |(child_key, _)| key.starts_with(child_key))
-        };
-        let children_iter = children_iter.flat_map(move |(child_key, child)| {
-            let remaining = key.split_off(RESULTS_BITS_END_NODE);
-
-            let mut key = prefix.clone();
-            key.extend(child_key);
-            child.matches_with_prefix(key, remaining)
-        });
-        let children_iter: Box<dyn Iterator<Item = (Key, &T)> + Send + Sync + '_> =
-            Box::new(children_iter);
-        results_iter.chain(children_iter)
+        self.results_and_children()
+            .filter({
+                let key = key.clone();
+                move |(child_or_result_key, _)| key.starts_with(child_or_result_key)
+            })
+            .flat_map(move |(child_or_result_key, child_or_result)| {
+                let (result, from_children): (
+                    _,
+                    Option<Box<dyn Iterator<Item = (Key, &T)> + Send + Sync>>,
+                ) = match child_or_result {
+                    ResultOrChild::Result(r) => (Some((child_or_result_key, r)), None),
+                    ResultOrChild::Child(child) => {
+                        let remaining = key.split_off(RESULTS_BITS_END_NODE);
+                        (
+                            None,
+                            Some(Box::new(
+                                child.matches_with_prefix(child_or_result_key, remaining),
+                            )),
+                        )
+                    }
+                };
+                let prefix = prefix.clone();
+                result
+                    .into_iter()
+                    .chain(from_children.into_iter().flatten())
+                    .map(move |(child_or_result_key, result)| {
+                        let mut key = prefix.clone();
+                        key.extend(child_or_result_key);
+                        (key, result)
+                    })
+            })
     }
     pub fn matches(&self, key: Key) -> impl Iterator<Item = (Key, &T)> + '_ {
         self.matches_with_prefix(Key::new(), key)
