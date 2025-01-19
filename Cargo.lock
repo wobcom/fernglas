@@ -2067,8 +2067,7 @@ checksum = "1367295b8f788d371ce2dbc842c7b709c73ee1364d30351dd300ec2203b12377"
 [[package]]
 name = "zettabgp"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "459d02087e2d98c5311bf7b7cb932622c649c33881f4243e564cac4a744a0ca5"
+source = "git+https://github.com/wobcom/zettabgp#0b56a5e96f1c6cc5dfc2df61aa571a6f08d9caf5"
 dependencies = [
  "log",
  "serde",

@@ -6,4 +6,4 @@ collectors:
     collector_type: Bmp
     bind: "[::]:11019"
     peers:
-      "192.0.2.1": {}
+      "2a0e:b940:0:2:a00e:f9ff:fe1b:b7e9": {}

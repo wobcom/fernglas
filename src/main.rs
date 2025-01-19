@@ -61,6 +61,10 @@ async fn main() -> anyhow::Result<()> {
             }),
     );
 
+    futures.extend(cfg.bmp_relays.into_values().map(|relay| {
+        tokio::task::spawn(bmp_relay::run(relay, store.clone(), shutdown_rx.clone()))
+    }));
+
     let mut sigint = signal(SignalKind::interrupt())?;
     let mut sigterm = signal(SignalKind::terminate())?;
     let res = tokio::select! {

@@ -55,7 +55,7 @@ impl InMemoryStore {
                 == query_router_id
         }
     }
-    fn get_table(&self, sel: TableSelector) -> InMemoryTable {
+    pub fn get_table(&self, sel: TableSelector) -> InMemoryTable {
         self.tables
             .lock()
             .unwrap()
