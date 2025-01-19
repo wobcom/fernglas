@@ -166,8 +166,9 @@ impl Store for InMemoryStore {
             tables
                 .into_par_iter()
                 .flat_map(move |(table_sel, table)| {
-                    let table = table.table.lock().unwrap();
-                    table
+                    let state = table.state.lock().unwrap();
+                    state
+                        .table
                         .get_routes(Some(&query.net_query))
                         .map(move |(net, _path_id, route)| {
                             let table_sel = table_sel.clone();
