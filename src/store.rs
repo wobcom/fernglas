@@ -148,6 +148,84 @@ impl Default for QueryLimits {
     }
 }
 
+pub fn make_bgp_withdraw(net: IpNet) -> zettabgp::prelude::BgpUpdateMessage {
+    use zettabgp::prelude::*;
+
+    BgpUpdateMessage {
+        attrs: vec![BgpAttrItem::MPWithdraws(BgpMPWithdraws {
+            addrs: net_to_bgp_addrs(net),
+        })],
+        ..Default::default()
+    }
+}
+
+impl RouteAttrs {
+    pub fn to_bgp_update(&self, net: IpNet) -> zettabgp::prelude::BgpUpdateMessage {
+        use zettabgp::prelude::*;
+
+        let mut attrs = vec![];
+
+        if let Some(nexthop) = self.nexthop {
+            attrs.push(BgpAttrItem::MPUpdates(BgpMPUpdates {
+                nexthop: std_addr_to_bgp_addr(nexthop),
+                addrs: net_to_bgp_addrs(net),
+            }));
+        } else {
+            warn!("Can not build MPUpdates without nexthop");
+        }
+
+        if let Some(communities) = &self.communities {
+            attrs.push(BgpAttrItem::CommunityList(BgpCommunityList {
+                value: communities
+                    .iter()
+                    .map(|(high, low)| BgpCommunity::new(((*high as u32) << 16) + *low as u32))
+                    .collect(),
+            }));
+        }
+        if let Some(large_communities) = &self.large_communities {
+            attrs.push(BgpAttrItem::LargeCommunityList(BgpLargeCommunityList {
+                value: large_communities
+                    .iter()
+                    .cloned()
+                    .map(|(ga, ldp1, ldp2)| BgpLargeCommunity { ga, ldp1, ldp2 })
+                    .collect(),
+            }));
+        }
+
+        if let Some(med) = self.med {
+            attrs.push(BgpAttrItem::MED(BgpMED { value: med }));
+        }
+        if let Some(local_pref) = self.local_pref {
+            attrs.push(BgpAttrItem::LocalPref(BgpLocalpref { value: local_pref }));
+        }
+
+        if let Some(origin) = &self.origin {
+            attrs.push(BgpAttrItem::Origin(BgpOrigin {
+                value: match origin {
+                    RouteOrigin::Igp => BgpAttrOrigin::Igp,
+                    RouteOrigin::Egp => BgpAttrOrigin::Egp,
+                    RouteOrigin::Incomplete => BgpAttrOrigin::Incomplete,
+                },
+            }));
+        }
+
+        if let Some(as_path) = &self.as_path {
+            attrs.push(BgpAttrItem::ASPath(BgpASpath {
+                value: as_path
+                    .iter()
+                    .cloned()
+                    .map(|value| BgpAS { value })
+                    .collect(),
+            }));
+        }
+
+        BgpUpdateMessage {
+            attrs,
+            ..Default::default()
+        }
+    }
+}
+
 pub trait Store: Clone + Send + Sync + 'static {
     fn update_route(
         &self,
@@ -381,6 +459,27 @@ fn bgp_addrs_to_nets(
             })
             .collect(),
         _ => vec![],
+    }
+}
+
+fn std_addr_to_bgp_addr(net: IpAddr) -> zettabgp::prelude::BgpAddr {
+    use zettabgp::prelude::*;
+    match net {
+        IpAddr::V4(v4) => BgpAddr::V4(v4),
+        IpAddr::V6(v6) => BgpAddr::V6(v6),
+    }
+}
+fn net_to_bgp_addrs(net: IpNet) -> zettabgp::prelude::BgpAddrs {
+    use zettabgp::prelude::*;
+    match net {
+        IpNet::V4(v4) => BgpAddrs::IPV4U(vec![BgpAddrV4 {
+            addr: v4.addr(),
+            prefixlen: v4.prefix_len(),
+        }]),
+        IpNet::V6(v6) => BgpAddrs::IPV6U(vec![BgpAddrV6 {
+            addr: v6.addr(),
+            prefixlen: v6.prefix_len(),
+        }]),
     }
 }
 

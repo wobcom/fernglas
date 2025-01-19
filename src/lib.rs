@@ -2,6 +2,7 @@ pub mod api;
 pub mod bgp_collector;
 mod bgpdumper;
 pub mod bmp_collector;
+pub mod bmp_relay;
 mod compressed_attrs;
 pub mod route_distinguisher;
 pub mod store;
@@ -42,4 +43,6 @@ pub struct Config {
     /// Only check config and exit
     #[serde(default)]
     pub config_check: bool,
+    #[serde(default)]
+    pub bmp_relays: HashMap<String, bmp_relay::RelayConfig>,
 }
