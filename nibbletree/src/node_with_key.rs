@@ -200,6 +200,52 @@ impl<K, T> Default for NodeWithKey<K, T> {
     }
 }
 
+impl<'a, K: FromKey + ToKey, T: Send + Sync> std::iter::Extend<(&'a K, T)> for NodeWithKey<K, T> {
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = (&'a K, T)>,
+    {
+        for (key, value) in iter {
+            self.insert(key, value);
+        }
+    }
+}
+
+impl<K: FromKey + ToKey, T: Send + Sync> std::iter::Extend<(K, T)> for NodeWithKey<K, T> {
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = (K, T)>,
+    {
+        for (key, value) in iter {
+            self.insert(&key, value);
+        }
+    }
+}
+
+impl<'a, K: FromKey + ToKey, T: Send + Sync> std::iter::FromIterator<(&'a K, T)>
+    for NodeWithKey<K, T>
+{
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (&'a K, T)>,
+    {
+        let mut node = NodeWithKey::default();
+        node.extend(iter);
+        node
+    }
+}
+
+impl<K: FromKey + ToKey, T: Send + Sync> std::iter::FromIterator<(K, T)> for NodeWithKey<K, T> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (K, T)>,
+    {
+        let mut node = NodeWithKey::default();
+        node.extend(iter);
+        node
+    }
+}
+
 impl<K: FromKey + ToKey, T: Send + Sync> NodeWithKey<K, T> {
     pub fn insert(&mut self, key: &K, value: T) -> Option<T> {
         self.node.insert(&key.to_key(), value)
