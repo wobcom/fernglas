@@ -1,5 +1,5 @@
 use crate::route_distinguisher::RouteDistinguisher;
-use crate::store::{Client, RouteState, Session, SessionId, Store, TableSelector, TableType};
+use crate::store::{Client, RouteState, Session, SessionId, Store, TableSelector};
 use bitvec::prelude::Msb0;
 use bitvec::view::BitView;
 use futures_util::future::join_all;
@@ -20,12 +20,10 @@ fn table_selector_for_peer(
     client_addr: SocketAddr,
     peer: &BmpMessagePeerHeader,
 ) -> Option<TableSelector> {
-    let table_type = match (peer.peertype, peer.flags.view_bits::<Msb0>()[1]) {
-        (0, false) | (1, false) => TableType::PrePolicyAdjIn,
-        (0, true) | (1, true) => TableType::PostPolicyAdjIn,
-        (3, _) => TableType::LocRib {
-            route_state: RouteState::Selected,
-        },
+    let route_state = match (peer.peertype, peer.flags.view_bits::<Msb0>()[1]) {
+        (0, false) | (1, false) => RouteState::Seen,
+        (0, true) | (1, true) => RouteState::Accepted,
+        (3, _) => RouteState::Selected,
         _ => return None,
     };
 
@@ -37,7 +35,7 @@ fn table_selector_for_peer(
 
     Some(TableSelector {
         route_distinguisher,
-        table_type,
+        route_state,
         session_id: SessionId {
             from_client: client_addr,
             peer_address: peer.peeraddress,

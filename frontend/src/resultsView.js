@@ -88,56 +88,38 @@ const processResults = (results) => {
 	const asnMap = Object.fromEntries(asnResults.map(r => [r.asn, r.asn_name ]));
 	const communityMap = Object.fromEntries(communityResults.map(r => [r.community, r.community_description ]));
 
-	// stage 1, combine pre- and post-policy adj-in tables
-	// start out with PostPolicy
-	const preAndPostPolicy = {};
-	const preAndPostPolicyKey = route => `${route.session_id.from_client}:${route.session_id.peer_address}:${route.net}`;
+	// stage 1, combine seen and accepted routes
+	// start out with Accepted
+	const seenAndAccepted = {};
+	const seenAndAcceptedKey = route => `${route.session_id.from_client}:${route.session_id.peer_address}:${route.net}`;
 	for (let route of routeResults) {
-		if (route.type === "PostPolicyAdjIn") {
-			preAndPostPolicy[preAndPostPolicyKey(route)] = route;
+		if (route.state === "Accepted") {
+			seenAndAccepted[seenAndAcceptedKey(route)] = route;
 		}
 	}
 	// add routes which are _only_ in PrePolicy => have not been accepted
 	for (let route of routeResults) {
-		if (route.type === "PrePolicyAdjIn") {
-			const key = preAndPostPolicyKey(route);
-			if (!preAndPostPolicy[key]) {
-				preAndPostPolicy[key] = route;
-				preAndPostPolicy[key].state = "Filtered";
+		if (route.type === "Seen") {
+			const key = seenAndAcceptedKey(route);
+			if (!seenAndAccepted[key]) {
+				seenAndAccepted[key] = route;
+				seenAndAccepted[key].state = "Filtered";
 			}
 		}
 	}
 
-	// stage 2, combine adj-in and loc-rib
+	// stage 2, combine Seen/Accepted and Accepted/Active/Selected (add-paths export / loc-rib)
 	const all = {};
 	const allKey = route => `${route.client_name}:${route.net}:${JSON.stringify(route.as_path)}:${JSON.stringify(route.large_communities)}:${route.nexthop}`;
-	for (let route of Object.values(preAndPostPolicy)) {
+	for (let route of Object.values(seenAndAccepted)) {
 		const key = allKey(route);
 		all[key] = route;
 	}
-	for (let route of routeResults) {
-		if (route.table === "LocRib" && route.state === "Accepted") {
+	for (let state of ["Accepted", "Active", "Selected"]) {
+		for (let route of routeResults.filter(route => route.state === state)) {
 			const key = allKey(route);
 			if (all[key])
-				all[key].state = "Accepted";
-			else
-				all[key] = route;
-		}
-	}
-	for (let route of routeResults) {
-		if (route.table === "LocRib" && route.state === "Active") {
-			const key = allKey(route);
-			if (all[key])
-				all[key].state = "Active";
-			else
-				all[key] = route;
-		}
-	}
-	for (let route of routeResults) {
-		if (route.table === "LocRib" && route.state === "Selected") {
-			const key = allKey(route);
-			if (all[key])
-				all[key].state = "Selected";
+				all[key].state = state;
 			else
 				all[key] = route;
 		}

@@ -202,7 +202,7 @@ impl Store for InMemoryStore {
                         });
 
                         Some(QueryResult {
-                            state: table.route_state(),
+                            state: table.route_state,
                             net,
                             table,
                             attrs: decompress_route_attrs(&attrs),
