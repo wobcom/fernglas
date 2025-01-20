@@ -49,41 +49,15 @@ pub enum RouteState {
     Selected,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub enum TableType {
-    PrePolicyAdjIn,
-    PostPolicyAdjIn,
-    LocRib {
-        #[serde(skip_serializing)]
-        route_state: RouteState,
-    },
-}
-
-impl Serialize for TableType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let table_type = match self {
-            TableType::PrePolicyAdjIn => "PrePolicyAdjIn",
-            TableType::PostPolicyAdjIn => "PostPolicyAdjIn",
-            TableType::LocRib { .. } => "LocRib",
-        };
-
-        serializer.serialize_str(table_type)
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TableSelector {
     // None equal default Routing Instance
     #[serde(skip_serializing_if = "RouteDistinguisher::is_default")]
+    #[serde(default)]
     pub route_distinguisher: RouteDistinguisher,
     pub session_id: SessionId,
-    #[serde(rename = "type")]
-    pub table_type: TableType,
+    pub route_state: RouteState,
 }
 
 impl TableSelector {
@@ -91,16 +65,9 @@ impl TableSelector {
         &self.session_id.from_client
     }
     pub fn session_id(&self) -> Option<&SessionId> {
-        match self.table_type {
-            TableType::LocRib { .. } => None,
-            _ => Some(&self.session_id),
-        }
-    }
-    pub fn route_state(&self) -> RouteState {
-        match self.table_type {
-            TableType::LocRib { route_state, .. } => route_state,
-            TableType::PostPolicyAdjIn => RouteState::Accepted,
-            TableType::PrePolicyAdjIn => RouteState::Seen,
+        match self.route_state {
+            RouteState::Seen | RouteState::Accepted => Some(&self.session_id),
+            _ => None,
         }
     }
 }
