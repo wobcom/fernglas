@@ -44,14 +44,20 @@ async fn main() -> anyhow::Result<()> {
 
     futures.extend(
         cfg.collectors
-            .into_values()
-            .map(|collector| match collector {
-                CollectorConfig::Bmp(cfg) => {
-                    tokio::task::spawn(bmp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
-                }
-                CollectorConfig::Bgp(cfg) => {
-                    tokio::task::spawn(bgp_collector::run(cfg, store.clone(), shutdown_rx.clone()))
-                }
+            .into_iter()
+            .map(|(name, collector)| match collector {
+                CollectorConfig::Bmp(cfg) => tokio::task::spawn(bmp_collector::run(
+                    name,
+                    cfg,
+                    store.clone(),
+                    shutdown_rx.clone(),
+                )),
+                CollectorConfig::Bgp(cfg) => tokio::task::spawn(bgp_collector::run(
+                    name,
+                    cfg,
+                    store.clone(),
+                    shutdown_rx.clone(),
+                )),
             }),
     );
 

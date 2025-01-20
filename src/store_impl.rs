@@ -7,7 +7,7 @@ use rayon::iter::ParallelIterator;
 use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::net::SocketAddr;
+use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -20,16 +20,17 @@ use crate::table_impl::*;
 
 #[derive(Default, Clone)]
 pub struct InMemoryStore {
-    clients: Arc<Mutex<HashMap<SocketAddr, Client>>>,
+    clients: Arc<Mutex<HashMap<(IpAddr, String), Client>>>,
     sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
     tables: Arc<Mutex<HashMap<TableSelector, InMemoryTable>>>,
     caches: Arc<Mutex<Caches>>,
 }
 
 fn tables_for_client_fn(
-    query_from_client: &SocketAddr,
+    client_ip: IpAddr,
+    listener: &str,
 ) -> impl Fn(&(&TableSelector, &InMemoryTable)) -> bool + '_ {
-    move |(k, _): &(_, _)| k.client_addr() == query_from_client
+    move |(k, _): &(_, _)| k.client_id() == (client_ip, listener.to_string())
 }
 
 fn tables_for_session_fn(
@@ -48,7 +49,7 @@ impl InMemoryStore {
             &clients
                 .lock()
                 .unwrap()
-                .get(k.client_addr())
+                .get(&k.client_id())
                 .unwrap()
                 .router_id
                 == query_router_id
@@ -64,13 +65,14 @@ impl InMemoryStore {
     }
     fn get_tables_for_client(
         &self,
-        client_addr: &SocketAddr,
+        client_ip: IpAddr,
+        listener: &str,
     ) -> Vec<(TableSelector, InMemoryTable)> {
         self.tables
             .lock()
             .unwrap()
             .iter()
-            .filter(tables_for_client_fn(client_addr))
+            .filter(tables_for_client_fn(client_ip, listener))
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
@@ -119,7 +121,9 @@ impl Store for InMemoryStore {
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>> {
         let mut tables = match query.table_query {
             Some(TableQuery::Table(table)) => vec![(table.clone(), self.get_table(table))],
-            Some(TableQuery::Client(client_addr)) => self.get_tables_for_client(&client_addr),
+            Some(TableQuery::Client(client_addr, listener)) => {
+                self.get_tables_for_client(client_addr, &listener)
+            }
             Some(TableQuery::Router(router_id)) => self.get_tables_for_router(&router_id),
             Some(TableQuery::Session(session_id)) => self.get_tables_for_session(&session_id),
             None => self.tables.lock().unwrap().clone().into_iter().collect(),
@@ -190,7 +194,7 @@ impl Store for InMemoryStore {
                     let clients = clients.clone();
                     let sessions = sessions.clone();
                     async move {
-                        let client = match clients.lock().unwrap().get(table.client_addr()) {
+                        let client = match clients.lock().unwrap().get(&table.client_id()) {
                             Some(v) => v.clone(),
                             None => {
                                 warn!("client is not connected");
@@ -215,43 +219,49 @@ impl Store for InMemoryStore {
         )
     }
 
-    fn get_routers(&self) -> HashMap<SocketAddr, Client> {
+    fn get_routers(&self) -> HashMap<(IpAddr, String), Client> {
         self.clients.lock().unwrap().clone()
     }
 
-    fn get_routing_instances(&self) -> HashMap<SocketAddr, HashSet<RouteDistinguisher>> {
+    fn get_routing_instances(&self) -> HashMap<(IpAddr, String), HashSet<RouteDistinguisher>> {
         let tables = self.tables.lock().unwrap().clone();
         let mut hm = HashMap::new();
         for table_selector in tables.into_keys() {
-            hm.entry(table_selector.session_id.from_client)
-                .or_insert(HashSet::new())
-                .insert(table_selector.route_distinguisher);
+            hm.entry((
+                table_selector.session_id.from_client,
+                table_selector.session_id.listener,
+            ))
+            .or_insert(HashSet::new())
+            .insert(table_selector.route_distinguisher);
         }
-
         hm
     }
 
     async fn client_up(
         &self,
-        client_addr: SocketAddr,
+        client_ip: IpAddr,
+        listener: String,
         _route_state: RouteState,
         client_data: Client,
     ) {
         self.clients
             .lock()
             .unwrap()
-            .insert(client_addr, client_data);
+            .insert((client_ip, listener), client_data);
     }
-    async fn client_down(&self, client_addr: SocketAddr) {
-        self.clients.lock().unwrap().remove(&client_addr);
+    async fn client_down(&self, client_ip: IpAddr, listener: String) {
+        self.clients
+            .lock()
+            .unwrap()
+            .remove(&(client_ip, listener.clone()));
         self.sessions
             .lock()
             .unwrap()
-            .retain(|k, _| k.from_client != client_addr);
+            .retain(|k, _| !(k.from_client == client_ip && k.listener == listener));
         self.tables
             .lock()
             .unwrap()
-            .retain(|k, v| !(tables_for_client_fn(&client_addr)(&(k, v))));
+            .retain(|k, v| !(tables_for_client_fn(client_ip, &listener)(&(k, v))));
         self.caches.lock().unwrap().remove_expired();
     }
 
