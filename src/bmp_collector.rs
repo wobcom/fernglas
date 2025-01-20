@@ -18,6 +18,7 @@ use zettabgp::bmp::BmpMessage;
 
 fn table_selector_for_peer(
     client_addr: SocketAddr,
+    listener_name: String,
     peer: &BmpMessagePeerHeader,
 ) -> Option<TableSelector> {
     let route_state = match (peer.peertype, peer.flags.view_bits::<Msb0>()[1]) {
@@ -37,7 +38,8 @@ fn table_selector_for_peer(
         route_distinguisher,
         route_state,
         session_id: SessionId {
-            from_client: client_addr,
+            from_client: client_addr.ip(),
+            listener: listener_name,
             peer_address: peer.peeraddress,
         },
     })
@@ -46,9 +48,10 @@ fn table_selector_for_peer(
 async fn process_route_monitoring(
     store: &impl Store,
     client_addr: SocketAddr,
+    listener_name: String,
     rm: BmpMessageRouteMonitoring,
 ) {
-    let session = match table_selector_for_peer(client_addr, &rm.peer) {
+    let session = match table_selector_for_peer(client_addr, listener_name, &rm.peer) {
         Some(session) => session,
         None => {
             trace!(
@@ -65,6 +68,7 @@ async fn process_route_monitoring(
 
 pub fn run_peer(
     client_addr: SocketAddr,
+    listener_name: String,
     peer: BmpMessagePeerHeader,
     store: &impl Store,
 ) -> mpsc::Sender<Result<BmpMessageRouteMonitoring, BmpMessagePeerDown>> {
@@ -73,7 +77,7 @@ pub fn run_peer(
 
     tokio::task::spawn(async move {
         trace!("{} {:?}", client_addr, peer);
-        if let Some(session_id) = table_selector_for_peer(client_addr, &peer)
+        if let Some(session_id) = table_selector_for_peer(client_addr, listener_name.clone(), &peer)
             .and_then(|store| store.session_id().cloned())
         {
             store.session_up(session_id, Session {}).await;
@@ -82,7 +86,7 @@ pub fn run_peer(
         loop {
             match rx.recv().await {
                 Some(Ok(rm)) => {
-                    process_route_monitoring(&store, client_addr, rm).await;
+                    process_route_monitoring(&store, client_addr, listener_name.clone(), rm).await;
                 }
                 Some(Err(down_msg)) => {
                     trace!("{} {:?}", client_addr, down_msg);
@@ -94,7 +98,7 @@ pub fn run_peer(
                 }
             }
         }
-        if let Some(session_id) = table_selector_for_peer(client_addr, &peer)
+        if let Some(session_id) = table_selector_for_peer(client_addr, listener_name.clone(), &peer)
             .and_then(|store| store.session_id().cloned())
         {
             store.session_down(session_id, None).await;
@@ -107,6 +111,7 @@ pub async fn run_client(
     cfg: PeerConfig,
     io: TcpStream,
     client_addr: SocketAddr,
+    listener_name: String,
     store: &impl Store,
 ) -> anyhow::Result<BmpMessageTermination> {
     let read = LengthDelimitedCodec::builder()
@@ -151,7 +156,12 @@ pub async fn run_client(
     > = HashMap::new();
     channels.insert(
         first_peer_up.peer.peeraddress,
-        run_peer(client_addr, first_peer_up.peer, store),
+        run_peer(
+            client_addr,
+            listener_name.clone(),
+            first_peer_up.peer,
+            store,
+        ),
     );
     let client_name = cfg
         .name_override
@@ -159,7 +169,8 @@ pub async fn run_client(
         .unwrap_or(client_addr.ip().to_string());
     store
         .client_up(
-            client_addr,
+            client_addr.ip(),
+            listener_name.clone(),
             RouteState::Selected,
             Client {
                 client_name,
@@ -178,12 +189,15 @@ pub async fn run_client(
             BmpMessage::RouteMonitoring(rm) => {
                 let channel = channels.entry(rm.peer.peeraddress).or_insert_with(|| {
                     warn!("the bmp device {} sent a message for a nonexisting peer, we'll initialize the table now: {:?}", &client_addr, &rm);
-                    run_peer(client_addr, rm.peer.clone(), store)
+                    run_peer(client_addr, listener_name.clone(), rm.peer.clone(), store)
                 });
                 channel.send(Ok(rm)).await.unwrap();
             }
             BmpMessage::PeerUpNotification(n) => {
-                channels.insert(n.peer.peeraddress, run_peer(client_addr, n.peer, store));
+                channels.insert(
+                    n.peer.peeraddress,
+                    run_peer(client_addr, listener_name.clone(), n.peer, store),
+                );
             }
             BmpMessage::PeerDownNotification(n) => match channels.remove(&n.peer.peeraddress) {
                 Some(channel) => channel.send(Err(n)).await.unwrap(),
@@ -209,6 +223,7 @@ pub struct BmpCollectorConfig {
 }
 
 pub async fn run(
+    name: String,
     cfg: BmpCollectorConfig,
     store: impl Store,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
@@ -222,11 +237,12 @@ pub async fn run(
                 info!("connected {:?}", client_addr);
 
                 let store = store.clone();
+                let name = name.clone();
                 let mut shutdown = shutdown.clone();
                 if let Some(peer_cfg) = cfg.peers.get(&client_addr.ip()).or(cfg.default_peer_config.as_ref()).cloned() {
                     running_tasks.push(tokio::spawn(async move {
                         tokio::select! {
-                            res = run_client(peer_cfg, io, client_addr, &store) => {
+                            res = run_client(peer_cfg, io, client_addr, name.clone(), &store) => {
                                 match res {
                                     Err(e) => warn!("disconnected {} {}", client_addr, e),
                                     Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
@@ -235,7 +251,7 @@ pub async fn run(
                             _ = shutdown.changed() => {
                             }
                         };
-                        store.client_down(client_addr).await;
+                        store.client_down(client_addr.ip(), name.clone()).await;
                     }));
                 } else {
                     info!("unexpected connection from {}", client_addr);

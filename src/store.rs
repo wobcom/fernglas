@@ -3,7 +3,7 @@ use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use log::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr};
 use std::pin::Pin;
 use zettabgp::prelude::{BgpAddrV4, BgpAddrV6};
 
@@ -33,7 +33,8 @@ pub struct RouteAttrs {
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionId {
-    pub from_client: SocketAddr,
+    pub from_client: IpAddr,
+    pub listener: String,
     pub peer_address: IpAddr,
 }
 
@@ -61,8 +62,11 @@ pub struct TableSelector {
 }
 
 impl TableSelector {
-    pub fn client_addr(&self) -> &SocketAddr {
-        &self.session_id.from_client
+    pub fn client_id(&self) -> (IpAddr, String) {
+        (
+            self.session_id.from_client,
+            self.session_id.listener.clone(),
+        )
     }
     pub fn session_id(&self) -> Option<&SessionId> {
         match self.route_state {
@@ -76,7 +80,7 @@ impl TableSelector {
 pub enum TableQuery {
     Table(TableSelector),
     Session(SessionId),
-    Client(SocketAddr),
+    Client(IpAddr, String),
     Router(RouterId),
 }
 
@@ -164,20 +168,22 @@ pub trait Store: Clone + Send + Sync + 'static {
 
     fn get_tables(&self) -> Vec<TableSelector>;
 
-    fn get_routers(&self) -> HashMap<SocketAddr, Client>;
+    fn get_routers(&self) -> HashMap<(IpAddr, String), Client>;
 
-    fn get_routing_instances(&self) -> HashMap<SocketAddr, HashSet<RouteDistinguisher>>;
+    fn get_routing_instances(&self) -> HashMap<(IpAddr, String), HashSet<RouteDistinguisher>>;
 
     fn client_up(
         &self,
-        client_addr: SocketAddr,
+        client_ip: IpAddr,
+        listener: String,
         route_state: RouteState,
         client_data: Client,
     ) -> impl std::future::Future<Output = ()> + std::marker::Send;
 
     fn client_down(
         &self,
-        client_addr: SocketAddr,
+        client_ip: IpAddr,
+        listener: String,
     ) -> impl std::future::Future<Output = ()> + std::marker::Send;
 
     fn session_up(

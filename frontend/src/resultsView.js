@@ -91,7 +91,7 @@ const processResults = (results) => {
 	// stage 1, combine seen and accepted routes
 	// start out with Accepted
 	const seenAndAccepted = {};
-	const seenAndAcceptedKey = route => `${route.session_id.from_client}:${route.session_id.peer_address}:${route.net}`;
+	const seenAndAcceptedKey = route => `${route.session_id.from_client}:${route.session_id.listener}:${route.session_id.peer_address}:${route.net}`;
 	for (let route of routeResults) {
 		if (route.state === "Accepted") {
 			seenAndAccepted[seenAndAcceptedKey(route)] = route;
