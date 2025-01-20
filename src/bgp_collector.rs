@@ -1,6 +1,6 @@
 use crate::bgpdumper::BgpDumper;
 use crate::route_distinguisher::RouteDistinguisher;
-use crate::store::{Client, RouteState, SessionId, Store, TableSelector, TableType};
+use crate::store::{Client, RouteState, SessionId, Store, TableSelector};
 use futures_util::future::join_all;
 use futures_util::TryStreamExt;
 use log::*;
@@ -83,9 +83,7 @@ pub async fn run_peer(
                         from_client: client_addr,
                         peer_address: client_addr.ip(),
                     },
-                    table_type: TableType::LocRib {
-                        route_state: cfg.route_state,
-                    },
+                    route_state: cfg.route_state,
                     route_distinguisher: RouteDistinguisher::Default,
                 },
                 update,
