@@ -21,6 +21,7 @@ pub async fn run_peer(
     store: impl Store,
     stream: TcpStream,
     client_addr: SocketAddr,
+    listener_name: String,
 ) -> anyhow::Result<BgpNotificationMessage> {
     let mut caps = vec![
         BgpCapability::SafiIPv4u,
@@ -61,7 +62,8 @@ pub async fn run_peer(
         .unwrap_or(client_addr.ip().to_string());
     store
         .client_up(
-            client_addr,
+            client_addr.ip(),
+            listener_name.clone(),
             cfg.route_state,
             Client {
                 client_name,
@@ -80,7 +82,8 @@ pub async fn run_peer(
             .insert_bgp_update(
                 TableSelector {
                     session_id: SessionId {
-                        from_client: client_addr,
+                        from_client: client_addr.ip(),
+                        listener: listener_name.clone(),
                         peer_address: client_addr.ip(),
                     },
                     route_state: cfg.route_state,
@@ -111,6 +114,7 @@ pub struct BgpCollectorConfig {
 }
 
 pub async fn run(
+    name: String,
     cfg: BgpCollectorConfig,
     store: impl Store,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
@@ -125,10 +129,11 @@ pub async fn run(
 
                 if let Some(peer_cfg) = cfg.peers.get(&client_addr.ip()).or(cfg.default_peer_config.as_ref()).cloned() {
                     let store = store.clone();
+                    let name = name.clone();
                     let mut shutdown = shutdown.clone();
                     running_tasks.push(tokio::spawn(async move {
                         tokio::select! {
-                            res = run_peer(peer_cfg, store.clone(), io, client_addr) => {
+                            res = run_peer(peer_cfg, store.clone(), io, client_addr, name.clone()) => {
                                 match res {
                                     Err(e) => warn!("disconnected {} {}", client_addr, e),
                                     Ok(notification) => info!("disconnected {} {:?}", client_addr, notification),
@@ -137,7 +142,7 @@ pub async fn run(
                             _ = shutdown.changed() => {
                             }
                         };
-                        store.client_down(client_addr).await;
+                        store.client_down(client_addr.ip(), name.clone()).await;
                     }));
                 } else {
                     info!("unexpected connection from {}", client_addr);

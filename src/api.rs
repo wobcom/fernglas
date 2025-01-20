@@ -340,7 +340,14 @@ async fn tables<T: Store>(State(AppState { store, .. }): State<AppState<T>>) -> 
     serde_json::to_string(&store.get_tables()).unwrap()
 }
 async fn routers<T: Store>(State(AppState { store, .. }): State<AppState<T>>) -> impl IntoResponse {
-    serde_json::to_string(&store.get_routers()).unwrap()
+    serde_json::to_string(
+        &store
+            .get_routers()
+            .into_iter()
+            .map(|(k, v)| (format!("{},{}", k.0, k.1), v))
+            .collect::<HashMap<_, _>>(),
+    )
+    .unwrap()
 }
 
 async fn routing_instances<T: Store>(
@@ -349,7 +356,12 @@ async fn routing_instances<T: Store>(
     let instances = store
         .get_routing_instances()
         .into_iter()
-        .map(|(k, v)| (k, v.into_iter().map(|v| (v, v)).collect::<Vec<_>>()))
+        .map(|(k, v)| {
+            (
+                format!("{},{}", k.0, k.1),
+                v.into_iter().map(|v| (v, v)).collect::<Vec<_>>(),
+            )
+        })
         .collect::<HashMap<_, _>>();
 
     serde_json::to_string(&instances).unwrap()
