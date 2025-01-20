@@ -369,6 +369,26 @@ fn bgp_addrs_to_nets(
                 bgpv6addr_to_ipnet(addr).map(|net| (RouteDistinguisher::Default, 0, net))
             })
             .collect(),
+        BgpAddrs::VPNV4UP(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| {
+                let WithPathId { pathid, nlri } = addr;
+                let rd = RouteDistinguisher::try_from(nlri.prefix.rd.clone())
+                    .inspect_err(|_| warn!("invalid Bgp Route distinguisher"))
+                    .ok()?;
+                bgpv4addr_to_ipnet(&nlri.prefix.prefix).map(|net| (rd, *pathid, net))
+            })
+            .collect(),
+        BgpAddrs::VPNV6UP(ref addrs) => addrs
+            .iter()
+            .filter_map(|addr| {
+                let WithPathId { pathid, nlri } = addr;
+                let rd = RouteDistinguisher::try_from(nlri.prefix.rd.clone())
+                    .inspect_err(|_| warn!("invalid Bgp Route distinguisher"))
+                    .ok()?;
+                bgpv6addr_to_ipnet(&nlri.prefix.prefix).map(|net| (rd, *pathid, net))
+            })
+            .collect(),
         BgpAddrs::VPNV4U(ref addrs) => addrs
             .iter()
             .filter_map(|labeled| {
