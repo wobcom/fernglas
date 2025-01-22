@@ -147,6 +147,18 @@ pub async fn run_client(
             anyhow::bail!("expected initial peer up notification, got: {:?}", other);
         }
     };
+    let mut channels: HashMap<
+        IpAddr,
+        mpsc::Sender<Result<BmpMessageRouteMonitoring, BmpMessagePeerDown>>,
+    > = HashMap::new();
+    channels.insert(
+        first_peer_up.peer.peeraddress,
+        run_peer(
+            client_addr,
+            first_peer_up.peer,
+            store,
+        ),
+    );
     let client_name = cfg
         .name_override
         .or(init_msg.sys_name)
@@ -161,11 +173,6 @@ pub async fn run_client(
             },
         )
         .await;
-
-    let mut channels: HashMap<
-        IpAddr,
-        mpsc::Sender<Result<BmpMessageRouteMonitoring, BmpMessagePeerDown>>,
-    > = HashMap::new();
 
     loop {
         let msg = read
