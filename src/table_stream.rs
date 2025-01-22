@@ -52,74 +52,73 @@ where
     };
     table.subscribe(Arc::downgrade(&subscriber));
     async_stream::stream! {
-        // Counting how many routes have been processed in an overflow (Err) or pass-through (Ok)
-        // phase. We start out in an Err phase, because the initial table dump is placed in the
-        // overflow table.
-        let mut num_processed = Err(0);
+        // Counting how many routes have been processed in a pass-through phase
+        let mut passthrough_processed = 0;
         loop {
             tokio::select! {
                 _ = overflow_table_notify.notified() => {
                     // the channel overflowed and the subscriber placed the new routes in the
                     // overflow table
-                    let overflow_table = std::mem::take(&mut *overflow_table.lock().unwrap());
-                    if let Ok(passthrough_processed) = &num_processed {
-                        // We are entering an overflow phase
-                        log::debug!("overflow, processed in pass-through phase: {}", passthrough_processed);
-                        num_processed = Err(0);
-                    }
-                    let overflow_processed = num_processed.as_mut().unwrap_err();
+                    let mut overflow_processed = 0;
+                    log::debug!("overflow, processed {} in pass-through phase", std::mem::take(&mut passthrough_processed));
 
-                    // pre-filter overflow_table on what differs from rib_out
-                    let overflow_table: InMemoryTableState<Action<C>> = {
-                        let overflow_table_flattened = overflow_table
-                            .table
-                            .iter()
-                            .flat_map(|(net, v)| v.iter().map(move |(num, action)| (net, *num, action)));
-                        let rib_out_flattened = rib_out
-                            .table
-                            .iter() // FUTUREWORK: since we are not interested in items only in
-                                    // rib_out, could we optimize the walk further?
-                            .flat_map(|(net, v)| v.iter().map(move |(num, action)| (net, *num, action)));
-                        Diff::new(
-                            overflow_table_flattened,
-                            rib_out_flattened,
-                            |(net, num, _): &(IpNet, PathId, _)| (*net, *num),
-                            |(net, num, _): &(IpNet, PathId, _)| (*net, *num)
-                        )
-                        .filter_map(|diff_event| {
-                            match diff_event {
-                                DiffEvent::OnlyLeft((net, num, Action::Update(u))) => Some((net, num, Action::Update(u.clone()))),
-                                // DiffEvent::OnlyLeft((net, num, Action::Withdraw)) => already withdrawn
-                                DiffEvent::Both((net, num, action), (_, _, existing)) if *action != Action::Update(existing.clone()) => Some((net, num, action.clone())),
-                                _ => None,
+                    let mut processed = 0;
+                    loop {
+                        let overflow_table = std::mem::take(&mut *overflow_table.lock().unwrap());
 
+                        // pre-filter overflow_table on what differs from rib_out
+                        let overflow_table: InMemoryTableState<Action<C>> = {
+                            let overflow_table_flattened = overflow_table
+                                .table
+                                .iter()
+                                .flat_map(|(net, v)| v.iter().map(move |(num, action)| (net, *num, action)));
+                            let rib_out_flattened = rib_out
+                                .table
+                                .iter() // FUTUREWORK: since we are not interested in items only in
+                                        // rib_out, could we optimize the walk further?
+                                .flat_map(|(net, v)| v.iter().map(move |(num, action)| (net, *num, action)));
+                            Diff::new(
+                                overflow_table_flattened,
+                                rib_out_flattened,
+                                |(net, num, _): &(IpNet, PathId, _)| (*net, *num),
+                                |(net, num, _): &(IpNet, PathId, _)| (*net, *num)
+                            )
+                            .filter_map(|diff_event| {
+                                match diff_event {
+                                    DiffEvent::OnlyLeft((net, num, Action::Update(u))) => Some((net, num, Action::Update(u.clone()))),
+                                    // DiffEvent::OnlyLeft((net, num, Action::Withdraw)) => already withdrawn
+                                    DiffEvent::Both((net, num, action), (_, _, existing)) if *action != Action::Update(existing.clone()) => Some((net, num, action.clone())),
+                                    _ => None,
+
+                                }
+                            })
+                            .collect()
+                        };
+
+                        for (net, entry) in overflow_table.table.iter() {
+                            for (num, action) in entry.iter() {
+                                processed += 1;
+                                match action {
+                                    Action::Update(attrs) => {
+                                        rib_out.update_route(*num, net, attrs.clone());
+                                    }
+                                    Action::Withdraw => {
+                                        rib_out.withdraw_route(*num, net);
+                                    }
+                                }
+                                yield (net, *num, action.clone());
                             }
-                        })
-                        .collect()
-                    };
-
-                    for (net, entry) in overflow_table.table.iter() {
-                        for (num, action) in entry.iter() {
-                            *overflow_processed += 1;
-                            match action {
-                                Action::Update(attrs) => {
-                                    rib_out.update_route(*num, net, attrs.clone());
-                                 }
-                                Action::Withdraw => {
-                                    rib_out.withdraw_route(*num, net);
-                                 }
-                            }
-                            yield (net, *num, action.clone());
                         }
+
+                        if processed == 0 {
+                            break;
+                        }
+                        overflow_processed += std::mem::take(&mut processed);
                     }
+
+                    log::debug!("caught up, processed {} in overflow phase", overflow_processed);
                 }
                 entry = rx.recv() => {
-                    if let Err(passthrough_processed) = &num_processed {
-                        // We are entering an overflow phase
-                        log::debug!("caught up, processed in overflow phase: {}", passthrough_processed);
-                        num_processed = Ok(0);
-                    }
-                    let passthrough_processed = num_processed.as_mut().unwrap();
                     let Some((net, num, action)) = entry else { break; };
                     let rib_out_entry = rib_out.table.exact(&net).and_then(|entry| {
                         match entry.binary_search_by_key(&num, |(k, _)| *k) {
@@ -134,7 +133,7 @@ where
                         _ => None,
                     };
                     let Some(actual_action) = actual_action else { continue };
-                    *passthrough_processed += 1;
+                    passthrough_processed += 1;
                     match &actual_action {
                         Action::Update(attrs) => rib_out.update_route(num, net, attrs.clone()),
                         Action::Withdraw => rib_out.withdraw_route(num, net),
