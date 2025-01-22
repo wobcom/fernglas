@@ -166,6 +166,8 @@ pub trait Store: Clone + Send + Sync + 'static {
 
     fn get_routes(&self, query: Query) -> Pin<Box<dyn Stream<Item = QueryResult> + Send>>;
 
+    fn get_tables(&self) -> Vec<TableSelector>;
+
     fn get_routers(&self) -> HashMap<(IpAddr, String), Client>;
 
     fn get_routing_instances(&self) -> HashMap<(IpAddr, String), HashSet<RouteDistinguisher>>;

@@ -336,6 +336,9 @@ async fn query<T: Store>(
     Ok(Body::from_stream(stream))
 }
 
+async fn tables<T: Store>(State(AppState { store, .. }): State<AppState<T>>) -> impl IntoResponse {
+    serde_json::to_string(&store.get_tables()).unwrap()
+}
 async fn routers<T: Store>(State(AppState { store, .. }): State<AppState<T>>) -> impl IntoResponse {
     serde_json::to_string(
         &store
@@ -383,6 +386,7 @@ async fn make_api<T: Store>(cfg: ApiServerConfig, store: T) -> anyhow::Result<Ro
     Ok(Router::new()
         .route("/query", get(query::<T>))
         .route("/routers", get(routers::<T>))
+        .route("/tables", get(tables::<T>))
         .route("/routing-instances", get(routing_instances::<T>))
         .with_state(AppState {
             cfg: Arc::new(cfg),
