@@ -214,6 +214,10 @@ impl Store for InMemoryStore {
         )
     }
 
+    fn get_tables(&self) -> Vec<TableSelector> {
+        self.tables.lock().unwrap().keys().cloned().collect()
+    }
+
     fn get_routers(&self) -> HashMap<SocketAddr, Client> {
         self.clients.lock().unwrap().clone()
     }
