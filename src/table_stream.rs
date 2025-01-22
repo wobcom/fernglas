@@ -1,4 +1,3 @@
-use crate::iter_diff::*;
 use crate::store::PathId;
 use crate::table_impl::*;
 use ipnet::IpNet;
@@ -16,7 +15,7 @@ where
     T: Compressable<Compressed = C> + Clone + 'static,
 {
     // The subscriber primarily sends table events here
-    let (tx, mut rx) = mpsc::channel(16);
+    let (tx, mut rx) = mpsc::channel(128);
 
     // Keeps track of the last state sent to the peer
     let mut rib_out: InMemoryTableState<C> = Default::default();
@@ -54,51 +53,41 @@ where
     async_stream::stream! {
         // Counting how many routes have been processed in a pass-through phase
         let mut passthrough_processed = 0;
+        let mut overflow_processed = 0;
         loop {
             tokio::select! {
                 _ = overflow_table_notify.notified() => {
                     // the channel overflowed and the subscriber placed the new routes in the
                     // overflow table
-                    let mut overflow_processed = 0;
-                    log::debug!("overflow, processed {} in pass-through phase", std::mem::take(&mut passthrough_processed));
+                    if overflow_processed == 0 {
+                        let passthrough_processed = std::mem::take(&mut passthrough_processed);
+                        if passthrough_processed != 0 {
+                            log::debug!("overflow, processed {} in pass-through phase", passthrough_processed);
+                        }
+                    }
 
                     let mut processed = 0;
                     loop {
                         let overflow_table = std::mem::take(&mut *overflow_table.lock().unwrap());
 
-                        // pre-filter overflow_table on what differs from rib_out
-                        let overflow_table: InMemoryTableState<Action<C>> = {
-                            let overflow_table_flattened = overflow_table
-                                .table
-                                .iter()
-                                .flat_map(|(net, v)| v.iter().map(move |(num, action)| (net, *num, action)));
-                            let rib_out_flattened = rib_out
-                                .table
-                                .iter() // FUTUREWORK: since we are not interested in items only in
-                                        // rib_out, could we optimize the walk further?
-                                .flat_map(|(net, v)| v.iter().map(move |(num, action)| (net, *num, action)));
-                            Diff::new(
-                                overflow_table_flattened,
-                                rib_out_flattened,
-                                |(net, num, _): &(IpNet, PathId, _)| (*net, *num),
-                                |(net, num, _): &(IpNet, PathId, _)| (*net, *num)
-                            )
-                            .filter_map(|diff_event| {
-                                match diff_event {
-                                    DiffEvent::OnlyLeft((net, num, Action::Update(u))) => Some((net, num, Action::Update(u.clone()))),
-                                    // DiffEvent::OnlyLeft((net, num, Action::Withdraw)) => already withdrawn
-                                    DiffEvent::Both((net, num, action), (_, _, existing)) if *action != Action::Update(existing.clone()) => Some((net, num, action.clone())),
-                                    _ => None,
-
-                                }
-                            })
-                            .collect()
-                        };
-
                         for (net, entry) in overflow_table.table.iter() {
                             for (num, action) in entry.iter() {
+                                let rib_out_entry = rib_out.table.exact(&net).and_then(|entry| {
+                                    match entry.binary_search_by_key(&num, |(k, _)| k) {
+                                        Ok(index) => Some(entry[index].1.clone()),
+                                        Err(_) => None,
+                                    }
+                                });
+                                let actual_action = match (action, rib_out_entry) {
+                                    (Action::Update(attrs), None) => Some(Action::Update(attrs)),
+                                    (Action::Update(attrs), Some(existing_route)) if *attrs != existing_route => Some(Action::Update(attrs)),
+                                    (Action::Withdraw, Some(_)) => Some(Action::Withdraw),
+                                    _ => None,
+                                };
+                                let Some(actual_action) = actual_action else { continue };
+
                                 processed += 1;
-                                match action {
+                                match actual_action {
                                     Action::Update(attrs) => {
                                         rib_out.update_route(*num, net, attrs.clone());
                                     }
@@ -116,29 +105,21 @@ where
                         overflow_processed += std::mem::take(&mut processed);
                     }
 
-                    log::debug!("caught up, processed {} in overflow phase", overflow_processed);
                 }
                 entry = rx.recv() => {
-                    let Some((net, num, action)) = entry else { break; };
-                    let rib_out_entry = rib_out.table.exact(&net).and_then(|entry| {
-                        match entry.binary_search_by_key(&num, |(k, _)| *k) {
-                            Ok(index) => Some(entry[index].1.clone()),
-                            Err(_) => None,
+                    if passthrough_processed == 0 {
+                        let overflow_processed = std::mem::take(&mut overflow_processed);
+                        if overflow_processed != 0 {
+                            log::debug!("caught up, processed {} in overflow phase", overflow_processed);
                         }
-                    });
-                    let actual_action = match (action, rib_out_entry) {
-                        (Action::Update(attrs), None) => Some(Action::Update(attrs)),
-                        (Action::Update(attrs), Some(existing_route)) if attrs != existing_route => Some(Action::Update(attrs)),
-                        (Action::Withdraw, Some(_)) => Some(Action::Withdraw),
-                        _ => None,
-                    };
-                    let Some(actual_action) = actual_action else { continue };
+                    }
+                    let Some((net, num, action)) = entry else { break; };
                     passthrough_processed += 1;
-                    match &actual_action {
+                    match &action {
                         Action::Update(attrs) => rib_out.update_route(num, net, attrs.clone()),
                         Action::Withdraw => rib_out.withdraw_route(num, net),
                     }
-                    yield (net, num, actual_action);
+                    yield (net, num, action);
                 }
             }
         }
