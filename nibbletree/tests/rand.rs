@@ -53,8 +53,7 @@ fn iter(len: usize, max_key_len: usize, seed: u8) {
     let (mut data, tree, _) = random_tree(len, max_key_len, seed);
 
     data.sort();
-    let mut out = tree.iter().map(|(k, v)| (k, *v)).collect::<Vec<_>>();
-    out.sort();
+    let out = tree.iter().map(|(k, v)| (k, *v)).collect::<Vec<_>>();
     assert_eq!(data, out);
 }
 
@@ -63,8 +62,7 @@ fn iter_mut(len: usize, max_key_len: usize, seed: u8) {
     let (mut data, mut tree, _) = random_tree(len, max_key_len, seed);
 
     data.sort();
-    let mut out = tree.iter_mut().map(|(k, v)| (k, *v)).collect::<Vec<_>>();
-    out.sort();
+    let out = tree.iter_mut().map(|(k, v)| (k, *v)).collect::<Vec<_>>();
     assert_eq!(data, out);
 }
 
@@ -74,8 +72,7 @@ fn keys(len: usize, max_key_len: usize, seed: u8) {
 
     let mut data = data.into_iter().map(|(k, _)| k).collect::<Vec<_>>();
     data.sort();
-    let mut out = tree.keys().collect::<Vec<_>>();
-    out.sort();
+    let out = tree.keys().collect::<Vec<_>>();
     assert_eq!(data, out);
 }
 
@@ -108,13 +105,12 @@ fn remove(len: usize, max_key_len: usize, seed: u8) {
     let to_be_removed = data.split_off(data.len() / 2);
     let removed = to_be_removed
         .iter()
-        .map(|(key, _)| (key.clone(), tree.remove(&key).unwrap()))
+        .map(|(key, _)| (key.clone(), tree.remove(key).unwrap()))
         .collect::<Vec<_>>();
     assert_eq!(to_be_removed, removed);
 
     data.sort();
-    let mut out = tree.iter().map(|(k, v)| (k, *v)).collect::<Vec<_>>();
-    out.sort();
+    let out = tree.iter().map(|(k, v)| (k, *v)).collect::<Vec<_>>();
     assert_eq!(data, out);
 }
 
@@ -124,7 +120,7 @@ fn exact(len: usize, max_key_len: usize, seed: u8) {
 
     for (key, value) in data.iter().take(100) {
         let should_match = Some(value);
-        let is_match = tree.exact(&key);
+        let is_match = tree.exact(key);
         assert_eq!(should_match, is_match);
     }
     for key in test_keys {
@@ -140,13 +136,13 @@ fn longest_match(len: usize, max_key_len: usize, seed: u8) {
 
     for (key, value) in data.iter().take(100) {
         let should_match = Some((key.clone(), value));
-        let is_match = tree.longest_match(&key);
+        let is_match = tree.longest_match(key);
         assert_eq!(should_match, is_match);
     }
     for key in test_keys {
         let should_match = data
             .iter()
-            .filter(|(k, _)| key.starts_with(&k))
+            .filter(|(k, _)| key.starts_with(k))
             .max_by_key(|(k, _)| k.len())
             .map(|(k, v)| (k.clone(), v));
         let is_match = tree.longest_match(&key);
@@ -164,9 +160,8 @@ fn or_longer(len: usize, max_key_len: usize, seed: u8) {
             .filter(|(k, _)| k.starts_with(&key))
             .map(|(k, v)| (k.clone(), v))
             .collect::<Vec<_>>();
-        let mut is_match = tree.or_longer(&key).collect::<Vec<_>>();
         should_match.sort();
-        is_match.sort();
+        let is_match = tree.or_longer(&key).collect::<Vec<_>>();
         assert_eq!(should_match, is_match);
     }
 }
@@ -181,9 +176,8 @@ fn matches(len: usize, max_key_len: usize, seed: u8) {
             .filter(|(k, _)| key.starts_with(k))
             .map(|(k, v)| (k.clone(), v))
             .collect::<Vec<_>>();
-        let mut is_match = tree.matches(&key).collect::<Vec<_>>();
         should_match.sort();
-        is_match.sort();
+        let is_match = tree.matches(&key).collect::<Vec<_>>();
         assert_eq!(should_match, is_match);
     }
 }
