@@ -153,11 +153,7 @@ pub async fn run_client(
     > = HashMap::new();
     channels.insert(
         first_peer_up.peer.peeraddress,
-        run_peer(
-            client_addr,
-            first_peer_up.peer,
-            store,
-        ),
+        run_peer(client_addr, first_peer_up.peer, store),
     );
     let client_name = cfg
         .name_override
