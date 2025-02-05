@@ -164,13 +164,9 @@
         cfg = config.services.fernglas;
         settingsFormat = pkgs.formats.yaml { };
 
-        hostSystem = if (options.nixpkgs ? hostPlatform && options.nixpkgs.hostPlatform.isDefined)
-          then config.nixpkgs.hostPlatform.system
-          else config.nixpkgs.localSystem.system
-        ;
         fernglasPkgs = if cfg.useMusl
-          then self.legacyPackages.${hostSystem}.pkgsCross.musl64
-          else self.legacyPackages.${hostSystem}
+          then self.legacyPackages.${pkgs.stdenv.hostPlatform.system}.pkgsCross.musl64
+          else self.legacyPackages.${pkgs.stdenv.hostPlatform.system}
         ;
 
         cfgfile = pkgs.writeTextFile {
