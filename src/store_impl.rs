@@ -45,13 +45,12 @@ impl InMemoryStore {
     ) -> impl Fn(&(&TableSelector, &InMemoryTable)) -> bool + 'a {
         let clients = self.clients.clone();
         move |(k, _): &(_, _)| {
-            &clients
+            clients
                 .lock()
                 .unwrap()
                 .get(&k.client_id())
-                .unwrap()
-                .router_id
-                == query_router_id
+                .map(|c| c.router_id == *query_router_id)
+                .unwrap_or(false)
         }
     }
     pub fn get_table(&self, sel: TableSelector) -> InMemoryTable {
