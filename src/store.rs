@@ -1,7 +1,10 @@
 use futures_util::Stream;
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use log::*;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use serde_with::DisplayFromStr;
 use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
 use std::pin::Pin;
@@ -93,6 +96,7 @@ pub enum NetQuery<T = IpNet> {
     OrLonger(T),
 }
 
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Query<T = IpNet> {
@@ -102,7 +106,8 @@ pub struct Query<T = IpNet> {
     pub net_query: NetQuery<T>,
     pub limits: Option<QueryLimits>,
     #[serde(default)]
-    pub as_path_regex: Option<String>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub as_path_regex: Option<Regex>,
     #[serde(default)]
     pub route_distinguisher: RouteDistinguisher,
 }

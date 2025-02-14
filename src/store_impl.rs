@@ -4,7 +4,6 @@ use ipnet::IpNet;
 use log::*;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
-use regex::Regex;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::net::IpAddr;
@@ -136,7 +135,6 @@ impl Store for InMemoryStore {
         > = Box::new(|_| true);
 
         if let Some(as_path_regex) = query.as_path_regex {
-            let regex = Regex::new(&as_path_regex).unwrap(); // FIXME error handling
             let new_filter_fn =
                 move |(_, _, route): &(TableSelector, IpNet, Arc<CompressedRouteAttrs>)| {
                     let as_path_text = match &route.as_path {
@@ -147,7 +145,7 @@ impl Store for InMemoryStore {
                             .join(" "),
                         None => return false,
                     };
-                    regex.is_match(&as_path_text)
+                    as_path_regex.is_match(&as_path_text)
                 };
             nets_filter_fn = Box::new(move |i| nets_filter_fn(i) && new_filter_fn(i))
         };
