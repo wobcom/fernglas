@@ -57,7 +57,7 @@
       ) { };
 
       fernglas-frontend = final.callPackage (
-        { lib, stdenv, yarn2nix-moretea, yarn, nodejs-slim }:
+        { lib, stdenv, nodejs, importNpmLock }:
 
         stdenv.mkDerivation (finalDrv: {
           pname = "fernglas-frontend";
@@ -77,25 +77,14 @@
           env.FERNGLAS_COMMIT = self.rev or "main";
           env.FERNGLAS_VERSION = finalDrv.version;
 
-          offlineCache = let
-            yarnLock = ./frontend/yarn.lock;
-            yarnNix = yarn2nix-moretea.mkYarnNix { inherit yarnLock; };
-          in
-            yarn2nix-moretea.importOfflineCache yarnNix;
+          npmDeps = importNpmLock {
+            npmRoot = finalDrv.src;
+          };
 
-          nativeBuildInputs = [ yarn nodejs-slim yarn2nix-moretea.fixup_yarn_lock ];
-
-          configurePhase = ''
-            runHook preConfigure
-
-            export HOME=$NIX_BUILD_TOP/fake_home
-            yarn config --offline set yarn-offline-mirror $offlineCache
-            fixup_yarn_lock yarn.lock
-            yarn install --offline --frozen-lockfile --ignore-scripts --no-progress --non-interactive
-            patchShebangs node_modules/
-
-            runHook postConfigure
-          '';
+          nativeBuildInputs = [
+            nodejs
+            importNpmLock.npmConfigHook
+          ];
 
           buildPhase = ''
             runHook preBuild
