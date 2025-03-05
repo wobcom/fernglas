@@ -3,11 +3,11 @@
     "communities": {
       "flake": false,
       "locked": {
-        "lastModified": 1738048427,
-        "narHash": "sha256-Orz9F1BkEUMdtAUmsxsHDRJzgBsnl7j2fOwEiQILzoY=",
+        "lastModified": 1739635166,
+        "narHash": "sha256-0ZONcN3ctsZgMVM//UMp+9iQfhODJNFHOhyWwx0EoTg=",
         "owner": "NLNOG",
         "repo": "lg.ring.nlnog.net",
-        "rev": "56b136a39ddf595ff08ced32d0c6ea46ec825887",
+        "rev": "686adbfd5222b830ba4fee998188cc8d96c09169",
         "type": "github"
       },
       "original": {
@@ -36,11 +36,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1738142207,
-        "narHash": "sha256-NGqpVVxNAHwIicXpgaVqJEJWeyqzoQJ9oc8lnK9+WC4=",
+        "lastModified": 1741010256,
+        "narHash": "sha256-WZNlK/KX7Sni0RyqLSqLPbK8k08Kq7H7RijPJbq9KHM=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "9d3ae807ebd2981d593cddd0080856873139aa40",
+        "rev": "ba487dbc9d04e0634c64e3b1f0d25839a0a68246",
         "type": "github"
       },
       "original": {
