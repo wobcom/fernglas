@@ -176,7 +176,7 @@
 
           useMusl = mkOption {
             type = types.bool;
-            default = true;
+            default = false;
             description = "Use musl libc for improved performance";
           };
 
