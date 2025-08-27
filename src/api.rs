@@ -173,7 +173,7 @@ struct CompiledCommunitiesList {
     list: Vec<(Regex, String)>,
 }
 impl CompiledCommunitiesList {
-    fn lookup(&self, community: &str) -> Option<Cow<str>> {
+    fn lookup(&self, community: &str) -> Option<Cow<'_, str>> {
         self.regex_set
             .matches(community)
             .iter()

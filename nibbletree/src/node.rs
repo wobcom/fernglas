@@ -215,7 +215,7 @@ enum ResultOrChildMut<'a, T> {
 }
 
 impl<T: Send + Sync> Node<T> {
-    fn results_and_children(&self) -> impl Iterator<Item = (Key, ResultOrChild<T>)> {
+    fn results_and_children(&self) -> impl Iterator<Item = (Key, ResultOrChild<'_, T>)> {
         let mut children_values_iter = self.children.iter().flat_map(|children| children.iter());
         let mut children_iter = self
             .bitmap
