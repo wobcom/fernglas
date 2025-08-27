@@ -101,6 +101,7 @@ pub struct PeerConfig {
     pub router_id: Ipv4Addr,
     pub name_override: Option<String>,
     pub route_state: RouteState,
+    #[serde(default)]
     pub add_path: bool,
     pub route_distinguisher: Option<RouteDistinguisher>,
 }
