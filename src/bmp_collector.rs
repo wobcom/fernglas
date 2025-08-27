@@ -123,14 +123,14 @@ pub async fn run_client(
             let orig_msg = match msg {
                 Ok(v) => v,
                 Err(e) => {
-                    warn!("BMP Codec Error: {:?}", e);
+                    warn!("BMP Codec Error: {}", e);
                     return None;
                 }
             };
             match BmpMessage::decode_from(&orig_msg[5..]) {
                 Ok(v) => Some(v),
                 Err(e) => {
-                    warn!("BMP Parse Error: {:?}", e);
+                    warn!("BMP Parse Error: {}", e);
                     warn!("{:x?}", &orig_msg);
                     None
                 }
