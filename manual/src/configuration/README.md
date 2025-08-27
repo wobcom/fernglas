@@ -37,6 +37,7 @@ collectors:
     default_peer_config:
       asn: 64496
       router_id: 192.0.2.100
+      route_state: Accepted
 
   # BGP collector that listens on the privileged port 179 and accepts incoming connections only from select client IPs
   bgp_filtered:
@@ -45,11 +46,13 @@ collectors:
     peers:
       "192.0.2.1":
         asn: 64496
-	router_id: 192.0.2.100
+        router_id: 192.0.2.100
+        route_state: Accepted
       "192.0.2.2":
         asn: 64496
-	router_id: 192.0.2.100
+        router_id: 192.0.2.100
         name_override: router02.example.org
+        route_state: Accepted
 ```
 
 Valid options for BMP peer config:
