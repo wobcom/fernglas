@@ -159,7 +159,7 @@
         ;
 
         cfgfile = pkgs.writeTextFile {
-          name = "config.yaml";
+          name = "config.yml";
           text = builtins.toJSON cfg.settings;
           checkPhase = ''
             RUST_LOG=trace FERNGLAS_CONFIG_CHECK=true ${fernglasPkgs.fernglas}/bin/fernglas $out
@@ -194,7 +194,7 @@
 
           settings = mkOption {
             type = settingsFormat.type;
-            description = "Fernglas configuration, which will be 1:1 translated to the config.yaml";
+            description = "Fernglas configuration, which will be 1:1 translated to the config.yml";
           };
         };
 

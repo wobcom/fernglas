@@ -17,7 +17,7 @@ We have two different images. One image contains the UI, which is statically bui
 docker pull ghcr.io/wobcom/fernglas:fernglas-0.2.1
 ```
 
-You need to write a config file to specify Fernglas configuration. This needs to be put under `/config/config.yaml` in the standard configuration.
+You need to write a config file to specify Fernglas configuration. This needs to be put under `/config/config.yml` in the standard configuration.
 See the chapter on [configuration](configuration/README.md) for more information on how to write the collectors configuration.
 
 ## Fernglas Frontend
