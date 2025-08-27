@@ -6,12 +6,12 @@ jobs:
   fernglas:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4.1.1
-    - uses: cachix/install-nix-action@v23
+    - uses: actions/checkout@v5.0.0
+    - uses: canidae-solutions/lix-quick-install-action@v3
     - run: 'nix shell .#cargo .#rustfmt -c cargo fmt --check'
   nibbletree:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4.1.1
-    - uses: cachix/install-nix-action@v23
+    - uses: actions/checkout@v5.0.0
+    - uses: canidae-solutions/lix-quick-install-action@v3
     - run: 'nix shell .#cargo .#rustfmt -c cargo fmt --manifest-path nibbletree/Cargo.toml --check'

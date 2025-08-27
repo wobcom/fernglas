@@ -7,9 +7,9 @@ jobs:
   fernglas:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4.1.1
-    - uses: cachix/install-nix-action@v23
-    - uses: cachix/cachix-action@v12
+    - uses: actions/checkout@v5.0.0
+    - uses: canidae-solutions/lix-quick-install-action@v3
+    - uses: cachix/cachix-action@v16
       with:
         name: wobcom-public
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -19,9 +19,9 @@ jobs:
   fernglas-frontend:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4.1.1
-    - uses: cachix/install-nix-action@v23
-    - uses: cachix/cachix-action@v12
+    - uses: actions/checkout@v5.0.0
+    - uses: canidae-solutions/lix-quick-install-action@v3
+    - uses: cachix/cachix-action@v16
       with:
         name: wobcom-public
         authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
