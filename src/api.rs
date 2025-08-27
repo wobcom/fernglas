@@ -405,9 +405,15 @@ pub async fn get_metrics() -> (StatusCode, String) {
 }
 
 #[cfg(feature = "embed-static")]
-async fn static_path(axum::extract::Path(path): axum::extract::Path<String>) -> impl IntoResponse {
+async fn static_path(path: Option<axum::extract::Path<String>>) -> impl IntoResponse {
     use axum::http::header;
     use axum::http::header::HeaderValue;
+
+    let axum::extract::Path(mut path) = path.unwrap_or(axum::extract::Path("".into()));
+
+    if path.is_empty() || path.ends_with("/") {
+        path.push_str("index.html");
+    }
 
     let path = path.trim_start_matches('/');
     let mime_type = mime_guess::from_path(path).first_or_text_plain();
@@ -437,7 +443,8 @@ pub async fn run_api_server<T: Store>(
 
     #[cfg(feature = "embed-static")]
     if cfg.serve_static {
-        router = router.route("/*path", get(static_path))
+        router = router.route("/", get(static_path));
+        router = router.route("/{*path}", get(static_path));
     }
 
     router = router

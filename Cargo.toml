@@ -11,7 +11,7 @@ repository = "https://github.com/wobcom/fernglas"
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
-axum = { version = "0.7", default-features = false, features = ["query", "http1", "tokio"] }
+axum = { version = "0.8", default-features = false, features = ["query", "http1", "tokio"] }
 bitvec = "1.0"
 bytes = "1.5"
 env_logger = "0.11"
