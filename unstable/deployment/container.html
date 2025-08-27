@@ -196,12 +196,12 @@
 </li>
 </ul>
 <h2 id="fernglas-backend"><a class="header" href="#fernglas-backend">Fernglas Backend</a></h2>
-<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas:fernglas-0.2.1
+<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas:fernglas-0.2.2
 </code></pre>
 <p>You need to write a config file to specify Fernglas configuration. This needs to be put under <code>/config/config.yml</code> in the standard configuration.
 See the chapter on <a href="configuration/README.html">configuration</a> for more information on how to write the collectors configuration.</p>
 <h2 id="fernglas-frontend"><a class="header" href="#fernglas-frontend">Fernglas Frontend</a></h2>
-<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas-frontend:fernglas-0.2.1
+<pre><code class="language-sh">docker pull ghcr.io/wobcom/fernglas-frontend:fernglas-0.2.2
 </code></pre>
 <p>By setting <code>serve_static: true</code> in the config, the backend will also serve the bundled frontend files from the same webserver as the API.</p>
 <p>You can take the fernglas-frontend image as base and serve the files with your own web server directly, if you want. The files need to be exposed at <code>/</code> of your domain, while the <code>/api/</code> path should be passed through to the API server.</p>
