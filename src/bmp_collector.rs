@@ -210,11 +210,13 @@ pub async fn run_client(
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PeerConfig {
     pub name_override: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BmpCollectorConfig {
     pub bind: SocketAddr,
     #[serde(default)]

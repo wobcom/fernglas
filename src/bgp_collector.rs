@@ -96,6 +96,7 @@ pub async fn run_peer(
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PeerConfig {
     pub asn: u32,
     pub router_id: Ipv4Addr,
@@ -107,6 +108,7 @@ pub struct PeerConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BgpCollectorConfig {
     pub bind: SocketAddr,
     #[serde(default)]

@@ -33,6 +33,7 @@ fn default_asn_dns_zone() -> Option<String> {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ApiServerConfig {
     bind: SocketAddr,
     #[serde(default)]

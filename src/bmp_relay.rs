@@ -19,6 +19,7 @@ use zettabgp::bmp::prelude::*;
 use zettabgp::prelude::*;
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RelayConfig {
     table: TableSelector,
 

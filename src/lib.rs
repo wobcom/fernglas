@@ -37,6 +37,7 @@ pub enum CollectorConfig {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub collectors: HashMap<String, CollectorConfig>,
     pub api: api::ApiServerConfig,
