@@ -310,7 +310,7 @@ pub trait Store: Clone + Send + Sync + 'static {
                         }
                     }
                     BgpAttrItem::NextHop(BgpNextHop { value }) => {
-                        nexthop = Some(value);
+                        nexthop = Some(value.to_canonical());
                     }
                     BgpAttrItem::CommunityList(BgpCommunityList { value }) => {
                         let mut communities = vec![];
