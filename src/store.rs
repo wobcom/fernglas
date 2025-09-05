@@ -364,7 +364,7 @@ pub trait Store: Clone + Send + Sync + 'static {
                     rd = session.route_distinguisher
                 }
                 let mut attrs = attrs.clone();
-                attrs.nexthop = nexthop;
+                attrs.nexthop = nexthop.map(|nh| nh.to_canonical());
                 self.update_route(
                     path,
                     prefix,
