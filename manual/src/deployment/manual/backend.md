@@ -12,7 +12,8 @@ File: /etc/fernglas/config.yml
 api:
   bind: "[::1]:3000"
 collectors:
-  - collector_type: Bmp
+  bmp:
+    collector_type: Bmp
     bind: "[::]:11019"
     peers:
       "192.0.2.1": {}
@@ -22,6 +23,9 @@ systemd service with hardening options:
 
 File: /etc/systemd/system/fernglas.service
 ```ini
+[Install]
+WantedBy=multi-user.target
+
 [Service]
 ExecStart=/usr/local/bin/fernglas /etc/fernglas/config.yml
 Environment=RUST_LOG=warn,fernglas=info
