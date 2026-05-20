@@ -8,7 +8,7 @@ use axum::routing::get;
 use axum::Router;
 use futures_util::{FutureExt, StreamExt};
 use hickory_resolver::config::LookupIpStrategy;
-use hickory_resolver::TokioAsyncResolver;
+use hickory_resolver::TokioResolver;
 use ipnet::IpNet;
 use log::*;
 use regex::Regex;
@@ -93,7 +93,7 @@ where
 #[derive(Clone)]
 struct AppState<T: Clone> {
     cfg: Arc<ApiServerConfig>,
-    resolver: TokioAsyncResolver,
+    resolver: TokioResolver,
     community_lists: Arc<CompiledCommunitiesLists>,
     store: T,
 }
@@ -104,7 +104,7 @@ impl<T: Clone> FromRef<AppState<T>> for Arc<ApiServerConfig> {
     }
 }
 
-impl<T: Clone> FromRef<AppState<T>> for TokioAsyncResolver {
+impl<T: Clone> FromRef<AppState<T>> for TokioResolver {
     fn from_ref(app_state: &AppState<T>) -> Self {
         app_state.resolver.clone()
     }
@@ -116,7 +116,7 @@ impl<T: Clone> FromRef<AppState<T>> for Arc<CompiledCommunitiesLists> {
     }
 }
 
-async fn parse_or_resolve(resolver: &TokioAsyncResolver, name: String) -> anyhow::Result<IpNet> {
+async fn parse_or_resolve(resolver: &TokioResolver, name: String) -> anyhow::Result<IpNet> {
     if let Ok(net) = name.parse() {
         return Ok(net);
     }
@@ -370,9 +370,12 @@ async fn routing_instances<T: Store>(
 
 async fn make_api<T: Store>(cfg: ApiServerConfig, store: T) -> anyhow::Result<Router> {
     let resolver = {
-        let (rcfg, mut ropts) = hickory_resolver::system_conf::read_system_conf()?;
+        let (_, mut ropts) = hickory_resolver::system_conf::read_system_conf()?;
         ropts.ip_strategy = LookupIpStrategy::Ipv6thenIpv4; // strange people set strange default settings
-        TokioAsyncResolver::tokio(rcfg, ropts)
+        TokioResolver::builder_tokio()
+            .unwrap()
+            .with_options(ropts)
+            .build()
     };
 
     let community_lists: CommunitiesLists = if let Some(ref path) = cfg.communities_file {
