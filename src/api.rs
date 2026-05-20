@@ -8,6 +8,7 @@ use axum::routing::get;
 use axum::Router;
 use futures_util::{FutureExt, StreamExt};
 use hickory_resolver::config::LookupIpStrategy;
+use hickory_resolver::proto::rr::RData;
 use hickory_resolver::TokioResolver;
 use ipnet::IpNet;
 use log::*;
@@ -263,7 +264,15 @@ async fn query<T: Store>(
                             .reverse_lookup(nexthop)
                             .await
                             .ok()
-                            .and_then(|reverse| reverse.iter().next().map(|x| x.0.to_string()))
+                            .and_then(|lookup| {
+                                lookup
+                                    .answers()
+                                    .iter()
+                                    .find_map(|record| match &record.data {
+                                        RData::PTR(ptr) => Some(ptr.to_string()),
+                                        _ => None,
+                                    })
+                            })
                             .map(|nexthop_resolved| ApiResult::ReverseDns {
                                 nexthop,
                                 nexthop_resolved,
@@ -281,15 +290,23 @@ async fn query<T: Store>(
                                 .txt_lookup(asn_dns_zone.replace("{}", &asn.to_string()))
                                 .await
                                 .ok()
-                                .and_then(|txt| {
-                                    txt.iter().next().and_then(|x| {
-                                        x.iter()
-                                            .next()
-                                            .and_then(|data| std::str::from_utf8(data).ok())
-                                            .and_then(|s| {
-                                                s.split(" | ").nth(4).map(|name| name.to_string())
-                                            })
-                                    })
+                                .and_then(|lookup| {
+                                    lookup
+                                        .answers()
+                                        .iter()
+                                        .find_map(|record| match &record.data {
+                                            RData::TXT(txt) => txt
+                                                .txt_data
+                                                .iter()
+                                                .next()
+                                                .and_then(|data| std::str::from_utf8(data).ok())
+                                                .and_then(|s| {
+                                                    s.split(" | ")
+                                                        .nth(4)
+                                                        .map(|name| name.to_string())
+                                                }),
+                                            _ => None,
+                                        })
                                 })
                                 .map(|asn_name| ApiResult::AsnName { asn, asn_name })
                         }))
@@ -376,6 +393,7 @@ async fn make_api<T: Store>(cfg: ApiServerConfig, store: T) -> anyhow::Result<Ro
             .unwrap()
             .with_options(ropts)
             .build()
+            .unwrap()
     };
 
     let community_lists: CommunitiesLists = if let Some(ref path) = cfg.communities_file {

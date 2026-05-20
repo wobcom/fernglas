@@ -30,7 +30,7 @@ weak-table = "0.3"
 nibbletree = { version = "0.2", path = "./nibbletree", features = ["ipnet"] }
 autometrics = { version = "3.0", features = ["prometheus-exporter"] }
 zettabgp = { version = "0.3.9" }
-hickory-resolver = "0.25"
+hickory-resolver = "0.26"
 include_dir = { version = "0.7", optional = true }
 mime_guess = { version = "2.0", optional = true }
 figment = { version = "0.10", features = ["yaml", "env"] }
