@@ -13,17 +13,17 @@ anyhow = "1.0"
 async-trait = "0.1"
 axum = { version = "0.8", default-features = false, features = ["query", "http1", "tokio"] }
 bitvec = "1.0"
-bytes = "1.10"
+bytes = "1.11"
 env_logger = "0.11"
 futures-util = "0.3"
-ipnet = { version = "2.11", features = ["serde"] }
+ipnet = { version = "2.12", features = ["serde"] }
 log = "0.4"
 mimalloc = { version = "0.1", optional = true }
-rayon = "1.11"
-regex = "1.11"
+rayon = "1.12"
+regex = "1.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.47", features = ["macros", "time", "rt-multi-thread", "io-util", "signal"] }
+tokio = { version = "1.52", features = ["macros", "time", "rt-multi-thread", "io-util", "signal"] }
 tokio-stream = "0.1"
 tokio-util = { version = "0.7", features = ["codec"] }
 weak-table = "0.3"
@@ -35,8 +35,8 @@ include_dir = { version = "0.7", optional = true }
 mime_guess = { version = "2.0", optional = true }
 figment = { version = "0.10", features = ["yaml", "env"] }
 async-stream = "0.3.6"
-rstest = { version = "0.24.0", default-features = false }
-serde_with = "3.14.0"
+rstest = { version = "0.26", default-features = false }
+serde_with = "3.20"
 
 [features]
 embed-static = ["include_dir", "mime_guess"]
