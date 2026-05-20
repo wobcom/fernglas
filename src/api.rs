@@ -399,7 +399,7 @@ async fn make_api<T: Store>(cfg: ApiServerConfig, store: T) -> anyhow::Result<Ro
 
 /// This handler serializes the metrics into a string for Prometheus to scrape
 pub async fn get_metrics() -> (StatusCode, String) {
-    match autometrics::encode_global_metrics() {
+    match autometrics::prometheus_exporter::encode_to_string() {
         Ok(metrics) => (StatusCode::OK, metrics),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, format!("{:?}", err)),
     }

@@ -34,7 +34,7 @@ async fn main() -> anyhow::Result<()> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     // Set up the exporter to collect metrics
-    let _exporter = autometrics::global_metrics_exporter();
+    let _exporter = autometrics::prometheus_exporter::init();
 
     futures.push(tokio::task::spawn(api::run_api_server(
         cfg.api,
