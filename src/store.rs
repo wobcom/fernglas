@@ -216,11 +216,7 @@ impl RouteAttrs {
 
         if let Some(as_path) = &self.as_path {
             attrs.push(BgpAttrItem::ASPath(BgpASpath {
-                value: as_path
-                    .iter()
-                    .cloned()
-                    .map(|value| BgpAS { value })
-                    .collect(),
+                value: as_path.iter().cloned().map(|value| value.into()).collect(),
             }));
         }
 
@@ -337,8 +333,15 @@ pub trait Store: Clone + Send + Sync + 'static {
                     }
                     BgpAttrItem::ASPath(BgpASpath { value }) => {
                         let mut as_path = vec![];
-                        for asn in value {
-                            as_path.push(asn.value);
+                        for as_item in value {
+                            match as_item {
+                                BgpASitem::Seq(seq) => {
+                                    as_path.extend(seq.value.into_iter().map(|asn| asn.value));
+                                }
+                                BgpASitem::Set(set) => {
+                                    as_path.extend(set.value.into_iter().map(|asn| asn.value));
+                                }
+                            }
                         }
                         attrs.as_path = Some(as_path);
                     }
